@@ -17,6 +17,9 @@ public:
 
   double evaluate() // override
   { return value; }
+  bool has_invalidate_signal() {
+    return true;
+  }
 };
 
 // Unary Operators ==========================================================
@@ -35,6 +38,9 @@ public:
 
   double evaluate() // override
   { return F( input -> eval() ); }
+  bool has_invalidate_signal() {
+    return true;
+  }
 };
 
 namespace unary {
@@ -78,6 +84,9 @@ public:
   }
 
   ~binary_base_t() { delete left; delete right; }
+  virtual bool has_invalidate_signal() {
+    return true;
+  }
 };
 
 class logical_and_t : public binary_base_t
@@ -500,9 +509,9 @@ static expr_t* build_expression_tree( action_t* action,
   if ( stack.size() != 1 )
     return 0;
 
-  expr_t* res = stack.back();
-  stack.pop_back();
-  return res;
+  root_expr_t* master_expr = new root_expr_t( "", stack );
+
+  return master_expr;
 }
 
 // action_expr_t::parse =====================================================

@@ -2039,6 +2039,7 @@ struct expression_t
 };
 
 // Action expression types ==================================================
+class root_expr_t;
 
 class expr_t
 {
@@ -2050,16 +2051,68 @@ protected:
 
   virtual double evaluate() = 0;
 
+
 public:
   expr_t( const std::string& name ) : name_( name ) {}
   virtual ~expr_t() {}
+  virtual void init( root_expr_t* )
+  {
 
+  }
+  virtual bool has_invalidate_signal() {
+    return false;
+  }
   const std::string& name() { return name_; }
 
   double eval() { return evaluate(); }
   bool success() { return eval() != 0; }
 
   static expr_t* parse( action_t*, const std::string& expr_str );
+};
+
+class root_expr_t : public expr_t
+{
+public:
+  root_expr_t( const std::string& n, const std::vector<expr_t*>& stack ) :
+    expr_t( n ),
+    child( stack.back() ),
+    cacheable( true ),
+    valid ( false ),
+    cache()
+  {
+    for( size_t i = 0; i < stack.size(); ++i ) {
+      stack[ i ] -> init( this );
+    }
+
+    for( size_t i = 0; i < stack.size(); ++i ) {
+      if ( !stack[ i ] -> has_invalidate_signal() ) {
+        // If we have a expr on the stack which doesn't have invalidate signal, disabling caching.
+        cacheable = false;
+      }
+    }
+  }
+
+  double evaluate() // override
+  {
+    if ( !cacheable )
+      return child -> eval();
+    else if ( !valid )
+    {
+      cache = child -> eval();
+      valid = true;
+    }
+    return cache;
+  }
+  void invalidate()
+  {
+    valid = false;
+  }
+  void set_uncacheable()
+  { cacheable = false; }
+private:
+  expr_t* child;
+  bool cacheable,valid;
+  double cache;
 };
 
 // Reference Expression - ref_expr_t
