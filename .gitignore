@@ -56,4 +56,3 @@ CMakeCache.txt
 *.swp
 *.pyc
 *.ld_*
-debian/gbp.conf
