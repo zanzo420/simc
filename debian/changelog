@@ -1,0 +1,6 @@
+simulationcraft (5.4.2-1) saucy; urgency=low
+
+  * Initial debian/ redo
+
+ -- Alessandro Grassi <alessandro.grassi@cloudesire.com>  Mon, 27 Jan 2014 13:41:45 +0100
+
