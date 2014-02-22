@@ -1,3 +1,16 @@
+simulationcraft (5.4.2-1ubuntu1saucy~1.gbp2d1dfa) UNRELEASED; urgency=low
+
+  ** SNAPSHOT build @2d1dfa8285f46cdc59fde38714108416083f5826 **
+
+  * Add gbp.conf to gitignore
+  * Set distribution to 'saucy'
+  * Fix gbp_build script
+  * Remove gbp.conf from gitignore
+  * Parametrize gbp build
+  * UNRELEASED
+
+ -- Alessandro Grassi <alessandro@aggro.it>  Sat, 22 Feb 2014 19:39:37 +0100
+
 simulationcraft (5.4.2-1ubuntu1~2.gbp2dd2a0) saucy; urgency=low
 
   ** SNAPSHOT build @2dd2a01052d4ef8eaf616734fc487619ecb8ae65 **
