@@ -1,9 +1,10 @@
-simulationcraft (5.4.2-1ubuntu1~1.gbp418bf5) UNRELEASED; urgency=low
+simulationcraft (5.4.2-1ubuntu1~2.gbp2dd2a0) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @418bf5831f983dd1eb5a0e2a35b705e0f57d3982 **
+  ** SNAPSHOT build @2dd2a01052d4ef8eaf616734fc487619ecb8ae65 **
 
   * Add 'simulationcraft' metapackage
   * Add a couple scripts to ease maintenance
+  * Move changelog to snapshot mode
 
  -- Alessandro Grassi <alessandro@aggro.it>  Sat, 22 Feb 2014 17:20:18 +0100
 
