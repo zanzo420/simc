@@ -59,7 +59,7 @@ Description: Common files for SimulationCraft, a combat simulator for WoW (TM).
 
 Package: simulationcraft
 Architecture: any
-Depends: simulationcraft-gui, simulationcraft-cli
+Depends: ${misc:Depends}, simulationcraft-gui, simulationcraft-cli
 Description: Meta-package for Simulationcraft, a combat simulator for WoW (tm)
  SimulationCraft is a tool to explore combat mechanics in the popular 
  MMO RPG World of Warcraft (tm).
@@ -76,6 +76,6 @@ Description: Meta-package for Simulationcraft, a combat simulator for WoW (tm)
  SimulationCraft allows raid/party creation of arbitrary size, generating
  detailed charts and reports for both individual and raid performance.
  .
- This package installs both the command line interface and the graphical
+ This metapackage installs both the command line interface and the graphical
  user interface.
 
