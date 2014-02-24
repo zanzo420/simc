@@ -1,26 +1,8 @@
-simulationcraft (5.4.2-1ubuntu1precise~1.gbpd9e02e) UNRELEASED; urgency=low
+simulationcraft (5.4.7-1ubuntu1precise~1) precise; urgency=low
 
-  ** SNAPSHOT build @d9e02ecf515cad6492f329100d27794c161c3009 **
-
-  * Test build
-  * Add gbp.conf to gitignore
-  * Adjust debian/ to build on qt4 for precise
-  * Add qtwebkit to build dependencies
-  * Remove gbp.conf from gitignore
-  * Fix gbp build script
-  * Parametrize gbp build
+  * New upstream version
 
  -- Alessandro Grassi <alessandro@aggro.it>  Sat, 22 Feb 2014 19:43:06 +0100
-
-simulationcraft (5.4.2-1ubuntu1~2.gbp2dd2a0) precise; urgency=low
-
-  ** SNAPSHOT build @2dd2a01052d4ef8eaf616734fc487619ecb8ae65 **
-
-  * Add 'simulationcraft' metapackage
-  * Add a couple scripts to ease maintenance
-  * Move changelog to snapshot mode
-
- -- Alessandro Grassi <alessandro@aggro.it>  Sat, 22 Feb 2014 17:20:18 +0100
 
 simulationcraft (5.4.2-1) saucy; urgency=low
 
