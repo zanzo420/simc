@@ -6,7 +6,7 @@
 #define SIMULATIONCRAFT_H
 
 #define SC_MAJOR_VERSION "547"
-#define SC_MINOR_VERSION "2"
+#define SC_MINOR_VERSION "4"
 #define SC_USE_PTR ( 0 )
 #define SC_BETA ( 0 )
 
@@ -2443,6 +2443,7 @@ public:
     ~event_managment_t();
     void add_event( core_event_t*, timespan_t delta_time, timespan_t current_time );
     void flush_events();
+    void preallocate_events( unsigned num );
     void init();
     core_event_t* next_event();
     void reset();
@@ -2643,8 +2644,8 @@ public:
   scaling_t* const scaling;
   plot_t*    const plot;
   reforge_plot_t* const reforge_plot;
-  timespan_t elapsed_cpu;
-  timespan_t elapsed_time;
+  double elapsed_cpu;
+  double elapsed_time;
   double     iteration_dmg, iteration_heal, iteration_absorb;
   simple_sample_data_t raid_dps, total_dmg, raid_hps, total_heal, total_absorb, raid_aps;
   extended_sample_data_t simulation_length;
@@ -2774,19 +2775,14 @@ private:
 
   void do_pause()
   {
-    if ( ! parent )
+    if ( parent )
+      parent -> do_pause();
+    else
     {
       pause_mutex.lock();
       while ( paused )
         pause_cvar.wait();
       pause_mutex.unlock();
-    }
-    else
-    {
-      parent -> pause_mutex.lock();
-      while ( parent -> paused )
-        parent -> pause_cvar.wait();
-      parent -> pause_mutex.unlock();
     }
   }
 };
@@ -2907,7 +2903,7 @@ struct plot_t
   int    dps_plot_debug;
   stat_e current_plot_stat;
   int    num_plot_stats, remaining_plot_stats, remaining_plot_points;
-  bool   dps_plot_positive;
+  bool   dps_plot_positive, dps_plot_negative;
 
   plot_t( sim_t* s );
 
@@ -2985,11 +2981,11 @@ struct core_event_t
 
   static void cancel( core_event_t*& e );
 
-  static void* allocate( std::size_t size, core_sim_t& );
+  static void* allocate( std::size_t size, core_sim_t::event_managment_t& );
   static void  recycle( core_event_t* );
   static void  release( core_event_t*& );
 
-  static void* operator new( std::size_t size, core_sim_t& sim ) { return allocate( size, sim ); }
+  static void* operator new( std::size_t size, core_sim_t& sim ) { return allocate( size, sim.em ); }
 
 #if defined(__GXX_EXPERIMENTAL_CXX0X__) && ( defined(SC_GCC) && SC_GCC >= 40400 || defined(SC_CLANG) && SC_CLANG >= 30000 ) // Improved compile-time diagnostics.
   static void* operator new( std::size_t ) throw() = delete; // DO NOT USE
@@ -3835,6 +3831,7 @@ struct player_collected_data_t
   // Tank
   extended_sample_data_t deaths;
   extended_sample_data_t theck_meloree_index;
+  extended_sample_data_t max_spike_amount;
   sc_timeline_t vengeance_timeline;
 
   std::array<simple_sample_data_t,RESOURCE_MAX> resource_lost, resource_gained;
