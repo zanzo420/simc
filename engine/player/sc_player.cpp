@@ -899,14 +899,14 @@ static bool init_parties( sim_t* sim )
     if ( party_str == "reset" )
     {
       party_index = 0;
-      for ( size_t i = 0; i < sim -> player_list.size(); ++i )
-        sim -> player_list[ i ] -> party = 0;
+      for ( size_t j = 0; j < sim -> player_list.size(); ++j )
+        sim -> player_list[ j ] -> party = 0;
     }
     else if ( party_str == "all" )
     {
-      for ( size_t i = 0; i < sim -> player_list.size(); ++i )
+      for ( size_t j = 0; j < sim -> player_list.size(); ++j )
       {
-        player_t* p = sim -> player_list[ i ];
+        player_t* p = sim -> player_list[ j ];
         p -> party = 1;
       }
     }
@@ -925,9 +925,9 @@ static bool init_parties( sim_t* sim )
           return false;
         }
         p -> party = party_index;
-        for ( size_t i = 0; i < p -> pet_list.size(); ++i )
+        for ( size_t k = 0; k < p -> pet_list.size(); ++k )
         {
-          pet_t* pet = p -> pet_list[ i ];
+          pet_t* pet = p -> pet_list[ k ];
           pet -> party = party_index;
         }
       }
@@ -6527,9 +6527,9 @@ struct pool_resource_t : public action_t
 
     if ( !resource_str.empty() )
     {
-      resource_e r = util::parse_resource_type( resource_str );
-      if ( r != RESOURCE_NONE )
-        resource = r;
+      resource_e res = util::parse_resource_type( resource_str );
+      if ( res != RESOURCE_NONE )
+        resource = res;
     }
   }
 
@@ -7237,13 +7237,13 @@ const spell_data_t* player_t::find_specialization_spell( const std::string& name
   {
     if ( unsigned spell_id = dbc.specialization_ability_id( _spec, name.c_str() ) )
     {
-      const spell_data_t* s = dbc.spell( spell_id );
-      if ( ( ( int )s -> level() <= level ) )
+      const spell_data_t* spell = dbc.spell( spell_id );
+      if ( ( ( int )spell -> level() <= level ) )
       {
         if ( dbc::get_token( spell_id ).empty() )
           dbc.add_token( spell_id, token );
 
-        return s;
+        return spell;
       }
     }
   }
@@ -7259,13 +7259,13 @@ const spell_data_t* player_t::find_mastery_spell( specialization_e s, const std:
   {
     if ( unsigned spell_id = dbc.mastery_ability_id( s, idx ) )
     {
-      const spell_data_t* s = dbc.spell( spell_id );
-      if ( ( int )s -> level() <= level )
+      const spell_data_t* spell = dbc.spell( spell_id );
+      if ( ( int )spell -> level() <= level )
       {
         if ( dbc::get_token( spell_id ).empty() )
           dbc.add_token( spell_id, token );
 
-        return dbc.spell( spell_id );
+        return spell;
       }
     }
   }
@@ -7342,13 +7342,13 @@ const spell_data_t* player_t::find_class_spell( const std::string& name, const s
   {
     if ( unsigned spell_id = dbc.class_ability_id( type, _spec, name.c_str() ) )
     {
-      const spell_data_t* s = dbc.spell( spell_id );
-      if ( s -> id() == spell_id && ( int )s -> level() <= level )
+      const spell_data_t* spell = dbc.spell( spell_id );
+      if ( spell -> id() == spell_id && ( int )spell -> level() <= level )
       {
         if ( dbc::get_token( spell_id ).empty() )
           dbc.add_token( spell_id, token );
 
-        return s;
+        return spell;
       }
     }
   }
@@ -8837,15 +8837,15 @@ void player_t::analyze( sim_t& s )
   {
     for ( size_t i = 0; i < num_stats; i++ )
     {
-      stats_t* s = tmp_stats_list[ i ];
-      s -> analyze();
+      stats_t* stats = tmp_stats_list[ i ];
+      stats -> analyze();
 
-      if ( s -> type == STATS_DMG )
-        s -> portion_amount =  collected_data.compound_dmg.mean() ? s -> actual_amount.mean() / collected_data.compound_dmg.mean() : 0.0 ;
-      else if ( s -> type == STATS_HEAL  )
-        s -> portion_amount =  collected_data.compound_heal.mean() ? s -> actual_amount.mean() / collected_data.compound_heal.mean() : 0.0;
-      else if ( s -> type == STATS_ABSORB )
-        s -> portion_amount =  collected_data.compound_absorb.mean() ? s -> actual_amount.mean() / collected_data.compound_absorb.mean() : 0.0;
+      if ( stats -> type == STATS_DMG )
+        stats -> portion_amount =  collected_data.compound_dmg.mean() ? stats -> actual_amount.mean() / collected_data.compound_dmg.mean() : 0.0 ;
+      else if ( stats -> type == STATS_HEAL  )
+        stats -> portion_amount =  collected_data.compound_heal.mean() ? stats -> actual_amount.mean() / collected_data.compound_heal.mean() : 0.0;
+      else if ( stats -> type == STATS_ABSORB )
+        stats -> portion_amount =  collected_data.compound_absorb.mean() ? stats -> actual_amount.mean() / collected_data.compound_absorb.mean() : 0.0;
 
     }
   }
@@ -8879,8 +8879,8 @@ void player_t::analyze( sim_t& s )
   for ( size_t i = 0; i < pet_list.size(); ++i )
   {
     pet_t* pet =  pet_list[ i ];
-    for ( size_t i = 0; i < pet -> gain_list.size(); ++i )
-      pet -> gain_list[ i ] -> analyze( s );
+    for ( size_t j = 0; j < pet -> gain_list.size(); ++j )
+      pet -> gain_list[ j ] -> analyze( s );
   }
 
   // Damage Timelines =======================================================
@@ -8888,12 +8888,12 @@ void player_t::analyze( sim_t& s )
   collected_data.timeline_dmg.init( max_buckets );
   for ( size_t i = 0, is_hps = ( primary_role() == ROLE_HEAL ); i < num_stats; i++ )
   {
-    stats_t* s = tmp_stats_list[ i ];
-    if ( ( s -> type != STATS_DMG ) == is_hps )
+    stats_t* stats = tmp_stats_list[ i ];
+    if ( ( stats -> type != STATS_DMG ) == is_hps )
     {
-      size_t j_max = std::min( max_buckets, s -> timeline_amount.data().size() );
+      size_t j_max = std::min( max_buckets, stats -> timeline_amount.data().size() );
       for ( size_t j = 0; j < j_max; j++ )
-        collected_data.timeline_dmg.add( j, s -> timeline_amount.data()[ j ] );
+        collected_data.timeline_dmg.add( j, stats -> timeline_amount.data()[ j ] );
     }
   }
 
@@ -9049,14 +9049,14 @@ void player_callbacks_t::register_callback( unsigned proc_flags,
   {
     // 1) Periodic damage only. This is the default behavior of our system when
     // only PROC1_PERIODIC is defined on a trinket.
-    if ( ! proc_flags & PF_HEAL && ! proc_flags2 & PF2_PERIODIC_HEAL )
+    if ( ! ( proc_flags & PF_HEAL ) && ! ( proc_flags2 & PF2_PERIODIC_HEAL ) )
       add_proc_callback( PROC1_PERIODIC, proc_flags2, cb );
 
     // 2) Periodic heals only. Either inferred by a "proc by direct heals" flag, 
     //    or by "proc on periodic heal ticks" flag, but require that there's 
     //    no direct / ticked spell damage in flags.
-    else if ( ( proc_flags & PF_HEAL || proc_flags2 & PF2_PERIODIC_HEAL ) && 
-              ! proc_flags & PF_SPELL && ! proc_flags2 & PF2_PERIODIC_DAMAGE )
+    else if ( ( ( proc_flags & PF_HEAL ) || ( proc_flags2 & PF2_PERIODIC_HEAL ) ) && 
+              ! ( proc_flags & PF_SPELL ) && ! ( proc_flags2 & PF2_PERIODIC_DAMAGE ) )
       add_proc_callback( PROC1_PERIODIC_HEAL, proc_flags2, cb );
 
     // Both
@@ -9751,6 +9751,7 @@ player_collected_data_t::player_collected_data_t( const std::string& player_name
   absorb_taken( player_name + " Absorb Taken", s.statistics_level < 2 ),
   deaths( player_name + " Deaths", s.statistics_level < 2 ),
   theck_meloree_index( player_name + " Theck-Meloree Index", s.statistics_level < 1 ),
+  max_spike_amount( player_name + " Max Spike Value", s.statistics_level < 1 ),
   resource_timelines(),
   combat_end_resource( RESOURCE_MAX ),
   stat_timelines(),
@@ -9853,6 +9854,7 @@ void player_collected_data_t::analyze( const player_t& p )
   // Tank
   deaths.analyze_all();
   theck_meloree_index.analyze_all();
+  max_spike_amount.analyze_all();
 
   for ( size_t i = 0; i <  resource_timelines.size(); ++i )
   {
@@ -9968,49 +9970,59 @@ void player_collected_data_t::collect_data( const player_t& p )
     if ( ! p.is_enemy() ) // Boss TMI is irrelevant, causes problems in iteration #1 
     {
       double tmi = 0; // TMI result
+      double max_spike = 0; // Maximum spike size
       if ( f_length )
       {
         // define constants and variables
-        int window = std::floor( ( p.tmi_window ) / 1 + 0.5 ); // window size, bin time replaces 1 eventually
-        double w0  = 6; // normalized window size
-        double hdf = 3; // default health decade factor
+        int window = std::floor( ( p.tmi_window ) / 1.0 + 0.5 ); // window size, bin time replaces 1 eventually
 
-        // create sliding average timeline
+        // declare sliding average timeline
         sc_timeline_t sliding_average_tl;
         sc_timeline_t sliding_average_normalized_tl;
 
-        // Use half window size of 3, so it's a moving average over 6 seconds
+        // create sliding average timelines from data
         health_changes.timeline.build_sliding_average_timeline( sliding_average_tl, window );
         health_changes.timeline_normalized.build_sliding_average_timeline( sliding_average_normalized_tl, window );
 
         // pull the data out of the normalized sliding average timeline
         std::vector<double> weighted_value = sliding_average_normalized_tl.data();
+        max_spike = *std::max_element( weighted_value.begin(), weighted_value.end() );
+        max_spike *= window;
+
+        // define constants
+        double D = 10; // filtering strength
+        double c2 = 450; // N_0, default fight length for normalization
+        double c1 = 100000 / D; // health scale factor, determines slope of plot
 
         for ( size_t j = 0, size = weighted_value.size(); j < size; j++ )
         {
-          // normalize to the default window size (6-second window)
-          weighted_value[ j ] *= w0;
-          
-          // calculate exponentially-weighted contribution of this data point
-          weighted_value[ j ] = std::exp( 10 * std::log( hdf ) * ( weighted_value[ j ] - 1 ) );
+          // weighted_value is the moving average (i.e. 1-second), so multiplly by window size to get damage in "window" seconds
+          weighted_value[ j ] *= window;
 
-          // add to the TMI total
+          // calculate exponentially-weighted contribution of this data point using filter strength D
+          weighted_value[ j ] = std::exp( D * weighted_value[ j ] );
+
+          // add to the TMI total; strictly speaking this should be moved outside the for loop and turned into a sort() followed by a sum for numerical accuracy
           tmi += weighted_value [ j ];
         }
 
+        // multiply by vertical offset factor c2
+        tmi *= c2;
         // normalize for fight length
         tmi /= f_length;
-
-        // constant multiplicative normalization factors
-        // these are estimates at the moment - will be fine-tuned later
-        tmi *= 10000;
-        tmi *= std::pow( static_cast<double>( window ) , 2 ); // normalizes for window size
+        // optional zero-bounding
+        // tmi += 1;
+        // take log of result
+        tmi = std::log( tmi );
+        // multiply by health decade scale factor
+        tmi *= c1;
 
         // if an output file has been defined, write to it
         print_tmi_debug_csv( &sliding_average_tl, &sliding_average_normalized_tl, weighted_value, p );
       }
       // normalize by fight length and add to TMI data array
       theck_meloree_index.add( tmi );
+      max_spike_amount.add( max_spike );
     }
     else
       theck_meloree_index.add( 0.0 );
