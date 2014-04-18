@@ -1,3 +1,9 @@
+simulationcraft (5.4.7.4-1ubuntu1precise~1) precise; urgency=low
+
+  * New upstream version
+
+ -- Alessandro Grassi <alessandro@aggro.it>  Fri, 18 Apr 2014 14:29:32 +0200
+
 simulationcraft (5.4.7-1ubuntu1precise~1) precise; urgency=low
 
   * New upstream version
