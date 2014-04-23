@@ -1,16 +1,16 @@
-simulationcraft (5.4.7.4-1ubuntu1saucy~1) saucy; urgency=low
+simulationcraft (5.4.7.4-1ubuntu1trusty~1) trusty; urgency=low
 
   * New upstream version
 
  -- Alessandro Grassi <alessandro@aggro.it>  Fri, 18 Apr 2014 15:00:42 +0200
 
-simulationcraft (5.4.7-1ubuntu1saucy~1) precise; urgency=low
+simulationcraft (5.4.7-1ubuntu1trusty~1) precise; urgency=low
 
   * New upstream version
 
  -- Alessandro Grassi <alessandro@aggro.it>  Sat, 22 Feb 2014 19:39:37 +0100
 
-simulationcraft (5.4.2-1) saucy; urgency=low
+simulationcraft (5.4.2-1) trusty; urgency=low
 
   * Initial debian/ redo
 
