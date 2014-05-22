@@ -134,6 +134,15 @@ const OptionEntry reforgePlotOptions[] =
 };
 const int reforgePlotOption_cut = 9; // separate between secondary and primary stats
 
+QComboBox* createChoiceFromRange( int lowerInclusive, int upperInclusive ) {
+  QComboBox* choice = new QComboBox();
+  for ( int i = lowerInclusive; i <= upperInclusive; i++ ) {
+    QString choiceText = QString::number(i);
+    choice -> addItem( choiceText );
+  }
+  return choice;
+}
+
 QComboBox* createChoice( int count, ... )
 {
   QComboBox* choice = new QComboBox();
@@ -176,7 +185,7 @@ SC_OptionsTab::SC_OptionsTab( SC_MainWindow* parent ) :
   connect( choice.default_role,       SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
   connect( choice.tmi_boss,           SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
   connect( choice.tmi_window,         SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
-  connect( choice.tmi_actor_only,     SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
+  connect( choice.show_etmi,          SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
   connect( choice.deterministic_rng,  SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
   connect( choice.fight_length,       SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
   connect( choice.fight_style,        SIGNAL( currentIndexChanged( int ) ), this, SLOT( _optionsChanged() ) );
@@ -232,13 +241,13 @@ void SC_OptionsTab::createGlobalsTab()
   globalsLayout_left -> addRow( tr(   "Num Enemies" ),     choice.num_target = createChoice( 8, "1", "2", "3", "4", "5", "6", "7", "8" ) );
   globalsLayout_left -> addRow( tr( "Challenge Mode" ),   choice.challenge_mode = createChoice( 2, "Disabled", "Enabled" ) );
   globalsLayout_left -> addRow( tr(  "Player Skill" ),   choice.player_skill = createChoice( 4, "Elite", "Good", "Average", "Ouch! Fire is hot!" ) );
-  globalsLayout_left -> addRow( tr(       "Threads" ),        choice.threads = addValidatorToComboBox( 1, QThread::idealThreadCount(), createChoice( 5, "1", "2", "3", "4", "8" ) ) );
+  globalsLayout_left -> addRow( tr(       "Threads" ),        choice.threads = addValidatorToComboBox( 1, QThread::idealThreadCount(), createChoiceFromRange( 1, QThread::idealThreadCount() ) ) );
   globalsLayout_left -> addRow( tr( "Armory Region" ),  choice.armory_region = createChoice( 5, "us", "eu", "tw", "cn", "kr" ) );
   globalsLayout_left -> addRow( tr(   "Armory Spec" ),    choice.armory_spec = createChoice( 2, "active", "inactive" ) );
   globalsLayout_left -> addRow( tr(  "Default Role" ),   choice.default_role = createChoice( 4, "auto", "dps", "heal", "tank" ) );
   globalsLayout_left -> addRow( tr( "TMI Standard Boss" ),   choice.tmi_boss = createChoice( 8, "custom", "T17Q", "T16H25", "T16H10", "T16N25", "T16N10", "T15H25", "T15N25", "T15LFR" ) );
   globalsLayout_left -> addRow( tr( "TMI Window (sec)" ),  choice.tmi_window = createChoice( 10, "0", "2", "3", "4", "5", "6", "7", "8", "9", "10" ) );
-  globalsLayout_left -> addRow( tr( "Actor-only TMI" ), choice.tmi_actor_only = createChoice( 2, "Disabled", "Enabled" ) );
+  globalsLayout_left -> addRow( tr( "Show ETMI" ),          choice.show_etmi = createChoice( 2, "Only When In Group", "Always" ) );
 
   QGroupBox* globalsGroupBox_left = new QGroupBox( tr( "Basic Options" ) );
   globalsGroupBox_left -> setLayout( globalsLayout_left );
@@ -545,7 +554,7 @@ void SC_OptionsTab::decodeOptions()
   load_setting( settings, "default_role", choice.default_role );
   load_setting( settings, "tmi_boss", choice.tmi_boss );
   load_setting( settings, "tmi_window_global", choice.tmi_window, "6" );
-  load_setting( settings, "tmi_actor_only", choice.tmi_actor_only );
+  load_setting( settings, "show_etmi", choice.show_etmi );
   load_setting( settings, "world_lag", choice.world_lag );
   load_setting( settings, "target_level", choice.target_level );
   load_setting( settings, "aura_delay", choice.aura_delay, "500ms" );
@@ -642,7 +651,7 @@ void SC_OptionsTab::encodeOptions()
   settings.setValue( "default_role", choice.default_role -> currentText() );
   settings.setValue( "tmi_boss", choice.tmi_boss -> currentText() );
   settings.setValue( "tmi_window_global", choice.tmi_window -> currentText() );
-  settings.setValue( "tmi_actor_only", choice.tmi_actor_only -> currentText() );
+  settings.setValue( "show_etmi", choice.show_etmi -> currentText() );
   settings.setValue( "world_lag", choice.world_lag -> currentText() );
   settings.setValue( "target_level", choice.target_level -> currentText() );
   settings.setValue( "aura_delay", choice.aura_delay -> currentText() );
@@ -735,11 +744,11 @@ void SC_OptionsTab::createToolTips()
                                      "Leaving at *custom* will use the SimC defaults unless overwritten by the user." ) );
 
   choice.tmi_window -> setToolTip( tr( "Specify window duration for calculating TMI. Default is 6 sec.\n"
-                                       "Reducing this increases the metric's sensitivity to shorter damage spikes.\n"
                                        "Set to 0 if you want to vary on a per-player basis in the Simulate tab using \"tmi_window=#\"." ) );
 
-  choice.tmi_actor_only -> setToolTip( tr( "Ignore external healing for TMI calculations.\n"
-                                           "Note that this will apply to all actors." ) );
+  choice.show_etmi -> setToolTip( tr( "Controls when ETMI is displayed in the HTML report.\n"
+                                      "TMI only includes damage taken and self-healing/absorbs, and treats overhealing as effective healing.\n"
+                                      "ETMI includes all sources of healing and absorption, and ignores overhealing." ) );
 
   choice.report_pets -> setToolTip( tr( "Specify if pets get reported separately in detail." ) );
 
@@ -822,8 +831,8 @@ QString SC_OptionsTab::get_globalSettings()
   if ( choice.challenge_mode -> currentIndex() > 0 )
     options += "challenge_mode=1\n";
 
-  if ( choice.tmi_actor_only -> currentIndex() != 0 )
-    options += "tmi_actor_only=1\n";
+  if ( choice.show_etmi -> currentIndex() != 0 )
+    options += "show_etmi=1\n";
 
   if ( choice.tmi_window -> currentIndex() != 0 )
     options += "tmi_window_global=" + choice.tmi_window-> currentText() + "\n";
