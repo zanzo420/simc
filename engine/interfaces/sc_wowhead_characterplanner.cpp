@@ -5,23 +5,42 @@
 
 #include "sc_wowhead_characterplanner.hpp"
 #include "../simulationcraft.hpp"
+#include <stdexcept>
 
 namespace {
 
-unsigned get_tab_id( unsigned list_id )
+
+std::string get_main_page( unsigned list_id )
 {
   std::string main_page;
   std::string url = "http://www.wowhead.com/list=" + util::to_string( list_id );
-  http::get( main_page, url, cache::CURRENT );
+  http::get( main_page, url, cache::ANY );
 
-  std::cout << main_page;
-
-  return 0;
+  return main_page;
 }
 
+std::string get_list_manager_section( unsigned list_id )
+{
+  auto main_page = get_main_page( list_id );
+
+  auto start = main_page.find( "<script type=\"text/javascript\">//<![CDATA[" );
+  auto end = main_page.find( "//]]></script>", start);
+
+  std::cout << "start: " << start << "\n";
+  std::cout << "end: " << end << "\n";
+
+  if ( start == std::string::npos || end == std::string::npos )
+  {
+    throw std::runtime_error("Could not find list manager section" );
+  }
+
+  return main_page.substr( start, ( end - start ) );
+
 }
 
-player_t* wowhead_charplanner::create_player( unsigned list_id )
+} // unnamed namespace
+
+player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
 {
   return nullptr;
 }
@@ -33,13 +52,17 @@ uint32_t dbc::get_school_mask( school_e ) { return 0; }
 
 void print_main_page( unsigned list_id )
 {
-  std::string main_page;
-  std::string url = "http://www.wowhead.com/list=" + util::to_string( list_id );
-  http::get( main_page, url, cache::CURRENT );
+  std::cout << get_main_page( list_id );
 }
 
+void print_list_manager_section( unsigned list_id )
+{
+
+  std::cout << get_list_manager_section( list_id );
+
+}
 int main()
 {
-  print_main_page( 1564664 );
+  print_list_manager_section( 1564664 );
 }
 #endif
