@@ -14,6 +14,7 @@ To change the list of source files, update the QT_ files and run synchronize.py
 		<ClInclude Include="..\engine\util\generic.hpp" />
 		<ClInclude Include="..\engine\util\concurrency.hpp" />
 		<ClInclude Include="..\engine\util\cache.hpp" />
+		<ClInclude Include="..\engine\interfaces\sc_wowhead_characterplanner.hpp" />
 		<ClInclude Include="..\engine\dbc\specialization.hpp" />
 		<ClInclude Include="..\engine\dbc\dbc.hpp" />
 		<ClInclude Include="..\engine\simulationcraft.hpp" />
@@ -114,6 +115,9 @@ To change the list of source files, update the QT_ files and run synchronize.py
 		</ClCompile>
 		<ClCompile Include="..\engine\player\sc_consumable.cpp">
 			
+		</ClCompile>
+		<ClCompile Include="..\engine\interfaces\sc_wowhead_characterplanner.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="..\engine\interfaces\sc_wowhead.cpp">
 			

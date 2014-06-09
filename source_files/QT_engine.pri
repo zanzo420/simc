@@ -11,6 +11,7 @@
  HEADERS += engine/util/generic.hpp
  HEADERS += engine/util/concurrency.hpp
  HEADERS += engine/util/cache.hpp
+ HEADERS += engine/interfaces/sc_wowhead_characterplanner.hpp
  HEADERS += engine/dbc/specialization.hpp
  HEADERS += engine/dbc/dbc.hpp
  PRECOMPILED_HEADER += engine/simulationcraft.hpp
@@ -53,6 +54,7 @@
  SOURCES += engine/player/sc_item.cpp
  SOURCES += engine/player/sc_enchant.cpp
  SOURCES += engine/player/sc_consumable.cpp
+ SOURCES += engine/interfaces/sc_wowhead_characterplanner.cpp
  SOURCES += engine/interfaces/sc_wowhead.cpp
  SOURCES += engine/interfaces/sc_http.cpp
  SOURCES += engine/interfaces/sc_bcp_api.cpp

@@ -174,30 +174,31 @@ public:
   struct
   {
     // const spell_data_t* enhanced_focus_will;
-    const spell_data_t* enhanced_holy_fire;
     // const spell_data_t* enhanced_leap_of_faith;
-    const spell_data_t* enhanced_power_word_shield;
 
     // TODO 2014/06/09: check if it procs per execute or tick, and if it procs from penance_damage as well.
     // See http://howtopriest.com/viewtopic.php?f=76&t=5887&p=50468#p50468
     const spell_data_t* enhanced_strength_of_soul;
 
-    const spell_data_t* improved_flash_heal;
 
     // TODO 2014/06/09: CoP is listed under affected spells. Check what's up with that.
     // http://howtopriest.com/viewtopic.php?f=76&t=5887&p=50469#p50469
     const spell_data_t* improved_heal;
 
-    const spell_data_t* improved_penance;
-    const spell_data_t* improved_smite;
 
-    // Shadow related
+    const spell_data_t* enhanced_holy_fire;
+    const spell_data_t* enhanced_power_word_shield;
+    const spell_data_t* enhanced_renew;
     const spell_data_t* enhanced_mind_flay;
     const spell_data_t* enhanced_shadow_orbs;
     const spell_data_t* enhanced_shadow_word_death;
+
     const spell_data_t* improved_mind_spike;
     const spell_data_t* improved_shadow_word_pain;
     const spell_data_t* improved_vampiric_touch;
+    const spell_data_t* improved_flash_heal;
+    const spell_data_t* improved_penance;
+    const spell_data_t* improved_smite;
   } perks;
 
   // Cooldowns
@@ -4319,6 +4320,7 @@ struct renew_t final : public priest_heal_t
 
     base_multiplier *= 1.0 + p.glyphs.renew -> effectN( 1 ).percent();
     dot_duration       += p.glyphs.renew -> effectN( 2 ).time_value();
+    dot_duration += p.perks.enhanced_renew -> effectN( 1 ).time_value();
 
     castable_in_shadowform = true;
   }
@@ -5089,15 +5091,16 @@ void priest_t::init_spells()
   mastery_spells.mental_anguish       = find_mastery_spell( PRIEST_SHADOW );
 
   // Perk Spells
-  perks.enhanced_holy_fire            = find_perk_spell( "Enhanced Holy Fire" );
-  perks.enhanced_power_word_shield    = find_perk_spell( "Enhanced Power Word: Shield" );
-  perks.enhanced_strength_of_soul     = find_perk_spell( "Enhanced Strength of Soul" );
   perks.improved_flash_heal           = find_perk_spell( "Improved Flash Heal" );
   perks.improved_heal                 = find_perk_spell( "Improved Heal" );
   perks.improved_penance              = find_perk_spell( "Improved Penance" );
   perks.improved_smite                = find_perk_spell( "Improved Smite" );
 
 
+  perks.enhanced_holy_fire            = find_perk_spell( "Enhanced Holy Fire" );
+  perks.enhanced_power_word_shield    = find_perk_spell( "Enhanced Power Word: Shield" );
+  perks.enhanced_strength_of_soul     = find_perk_spell( "Enhanced Strength of Soul" );
+  perks.enhanced_renew                = find_perk_spell( "Enhanced Renew" );
   perks.enhanced_mind_flay            = find_perk_spell( "Enhanced Mind Flay" );
   perks.enhanced_shadow_orbs          = find_perk_spell( "Enhanced Shadow Orbs" );
   perks.enhanced_shadow_word_death    = find_perk_spell( "Enhanced Shadow Word: Death" );
