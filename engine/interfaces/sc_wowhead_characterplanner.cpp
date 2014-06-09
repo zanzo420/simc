@@ -5,7 +5,9 @@
 
 #include "sc_wowhead_characterplanner.hpp"
 #include "../simulationcraft.hpp"
-#include <stdexcept>
+#include "util/rapidjson/document.h"
+#include "util/rapidjson/stringbuffer.h"
+#include "util/rapidjson/prettywriter.h"
 
 namespace {
 
@@ -26,14 +28,14 @@ std::string get_list_manager_section( unsigned list_id )
   auto start = main_page.find( "var $WowheadListManager = new ListManager(" );
   if ( start == std::string::npos )
   {
-    throw std::runtime_error("Could not find list manager section start" );
+    throw wowhead_charplanner::exception("Could not find list manager section start" );
   }
   start += sizeof("var $WowheadListManager = new ListManager(") - 1;
   auto end = main_page.find( "\n", start);
 
   if ( end == std::string::npos )
   {
-    throw std::runtime_error("Could not find list manager section end " );
+    throw wowhead_charplanner::exception("Could not find list manager section end ");
   }
 
   std::cout << "start: " << start << "\n";
@@ -60,14 +62,30 @@ void print_main_page( unsigned list_id )
   std::cout << get_main_page( list_id );
 }
 
-void print_list_manager_section( unsigned list_id )
+void json_print_list_manager_section( unsigned list_id )
 {
+  auto list_manager_str = get_list_manager_section( list_id );
 
-  std::cout << get_list_manager_section( list_id );
+  std::cout << "\n\n" << list_manager_str << "\n\n";
+
+  rapidjson::Document list_manager;
+  list_manager.Parse< 0 >( list_manager_str.c_str() );
+
+  if ( list_manager.HasParseError() )
+    throw wowhead_charplanner::exception(std::string("List Manager Parse error: ") + list_manager.GetParseError() + "\noffset=" + util::to_string(list_manager.GetErrorOffset()) );
+
+  if ( !list_manager.HasMember( "lists" ) )
+    throw wowhead_charplanner::exception("no_lists");
+
+  rapidjson::StringBuffer b;
+  rapidjson::PrettyWriter< rapidjson::StringBuffer > writer( b );
+
+  list_manager.Accept( writer );
+  std::cout << b.GetString();
 
 }
 int main()
 {
-  print_list_manager_section( 1564664 );
+  json_print_list_manager_section( 1564664 );
 }
 #endif
