@@ -23,18 +23,23 @@ std::string get_list_manager_section( unsigned list_id )
 {
   auto main_page = get_main_page( list_id );
 
-  auto start = main_page.find( "<script type=\"text/javascript\">//<![CDATA[" );
-  auto end = main_page.find( "//]]></script>", start);
+  auto start = main_page.find( "var $WowheadListManager = new ListManager(" );
+  if ( start == std::string::npos )
+  {
+    throw std::runtime_error("Could not find list manager section start" );
+  }
+  start += sizeof("var $WowheadListManager = new ListManager(") - 1;
+  auto end = main_page.find( "\n", start);
+
+  if ( end == std::string::npos )
+  {
+    throw std::runtime_error("Could not find list manager section end " );
+  }
 
   std::cout << "start: " << start << "\n";
   std::cout << "end: " << end << "\n";
 
-  if ( start == std::string::npos || end == std::string::npos )
-  {
-    throw std::runtime_error("Could not find list manager section" );
-  }
-
-  return main_page.substr( start, ( end - start ) );
+  return main_page.substr( start, ( end - start - sizeof(");" ) ) );
 
 }
 
