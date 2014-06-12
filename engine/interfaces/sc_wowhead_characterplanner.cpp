@@ -11,6 +11,7 @@
 
 namespace {
 
+// WOWHEAD ID translations, starting at 1: slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
 
 std::string get_main_page( unsigned list_id )
 {
@@ -89,6 +90,20 @@ std::string get_equipment_tab_page( unsigned list_id )
   return get_tab_page( list_id, equip_id );
 }
 
+
+rapidjson::Document get_equipment_tab_data( unsigned list_id )
+{
+  auto s = get_equipment_tab_page( list_id );
+  auto filtered = "{" + util::get_first_substring_between( s, "{", ");" );
+
+  rapidjson::Document out;
+  out.Parse< 0 >( filtered.c_str() );
+
+  if ( out.HasParseError() )
+    throw wowhead_charplanner::exception(std::string("Equipment Data Tab Parse error: ") + out.GetParseError() );
+
+  return out;
+}
 } // unnamed namespace
 
 player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
@@ -113,14 +128,13 @@ int main()
   std::cout << get_equipment_tab_id( 1564664 ) << "\n\n";
   //std::cout <<  get_equipment_tab_page( 1564664 );
 
-  /*rapidjson::Document t;
-  t.Parse< 0 >( s.c_str() );
+  auto t = get_equipment_tab_data( 1564664 );
 
 
   rapidjson::StringBuffer b;
   rapidjson::PrettyWriter< rapidjson::StringBuffer > writer( b );
 
   t.Accept( writer );
-  std::cout << b.GetString();*/
+  std::cout << b.GetString();
 }
 #endif
