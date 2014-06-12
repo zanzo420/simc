@@ -45,6 +45,27 @@ std::string get_list_manager_section( unsigned list_id )
 
 }
 
+std::string replace_date( std::string in )
+{
+  std::string date_start( "new Date(" );
+  std::string date_end(")");
+  std::string replace_with("\"\"");
+  return util::replace_all_between( in, date_start, date_end, replace_with );
+}
+
+rapidjson::Document get_json_list_manager_section( unsigned list_id )
+{
+  auto list_manager_str = replace_date( get_list_manager_section( list_id ) );
+
+  rapidjson::Document list_manager;
+  list_manager.Parse< 0 >( list_manager_str.c_str() );
+
+  if ( list_manager.HasParseError() )
+    throw wowhead_charplanner::exception(std::string("List Manager Parse error: ") + list_manager.GetParseError() + "\noffset=" + util::to_string(list_manager.GetErrorOffset()) );
+
+  return list_manager;
+}
+
 } // unnamed namespace
 
 player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
@@ -52,6 +73,7 @@ player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
   return nullptr;
 }
 
+//#define UNIT_TEST_WOWHEAD
 #ifdef UNIT_TEST_WOWHEAD
 #include <iostream>
 void sim_t::errorf( const char*, ... ) { }
@@ -62,30 +84,34 @@ void print_main_page( unsigned list_id )
   std::cout << get_main_page( list_id );
 }
 
-void json_print_list_manager_section( unsigned list_id )
+int main()
 {
-  auto list_manager_str = get_list_manager_section( list_id );
+  auto d = get_json_list_manager_section( 1564664 );
 
-  std::cout << "\n\n" << list_manager_str << "\n\n";
-
-  rapidjson::Document list_manager;
-  list_manager.Parse< 0 >( list_manager_str.c_str() );
-
-  if ( list_manager.HasParseError() )
-    throw wowhead_charplanner::exception(std::string("List Manager Parse error: ") + list_manager.GetParseError() + "\noffset=" + util::to_string(list_manager.GetErrorOffset()) );
-
-  if ( !list_manager.HasMember( "lists" ) )
+  if ( !d.HasMember( "lists" ) )
     throw wowhead_charplanner::exception("no_lists");
+
+
+    int equip_id = -1;
+    assert(d["lists"].IsArray());
+    for (rapidjson::SizeType i = 0; i < d["lists"].Size(); ++i )
+    {
+      if ( !d["lists"][i].HasMember( "type" ) )
+        throw wowhead_charplanner::exception("list entry has no type." );
+
+      auto k = d["lists"][i]["type"].GetInt();
+      if ( k == -1 ) // Equipment Set List
+      {
+        equip_id = d["lists"][i]["id"].GetInt();
+      }
+    }
+
+  std::cout << "equip_id=" << equip_id;
 
   rapidjson::StringBuffer b;
   rapidjson::PrettyWriter< rapidjson::StringBuffer > writer( b );
 
-  list_manager.Accept( writer );
-  std::cout << b.GetString();
-
-}
-int main()
-{
-  json_print_list_manager_section( 1564664 );
+  d.Accept( writer );
+  //std::cout << b.GetString();
 }
 #endif

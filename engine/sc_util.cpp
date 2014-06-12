@@ -2198,6 +2198,19 @@ std::string& util::replace_all( std::string& s, const std::string& from, const s
   return s;
 }
 
+/* replaces all occurrences of 'start_token' to 'end_token' ( + everything between ) in the string 's', with 'to'
+ */
+std::string util::replace_all_between( std::string s, const std::string& start_token, const std::string& end_token, const std::string& to)
+{
+  std::string::size_type start_pos, end_pos;
+  while ( ( start_pos = s.find( start_token ) ) != s.npos && ( end_pos = s.find( end_token, start_pos + start_token.length() ) ) )
+  {
+    s.replace( start_pos, end_pos + end_token.length() - start_pos, to );
+  }
+
+  return s;
+}
+
 // erase_all ================================================================
 
 std::string& util::erase_all( std::string& s, const std::string& from )
