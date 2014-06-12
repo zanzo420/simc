@@ -2211,6 +2211,24 @@ std::string util::replace_all_between( std::string s, const std::string& start_t
   return s;
 }
 
+std::string util::get_first_substring_between( std::string str, const std::string& start, const std::string& end )
+{
+  std::string::size_type start_pos = str.find( start );
+  if ( start_pos == std::string::npos )
+  {
+    throw std::runtime_error("could not find start pos" );
+  }
+  start_pos += start.length();
+  std::string::size_type end_pos = str.find( end, start_pos);
+
+  if ( end_pos == std::string::npos )
+  {
+    throw std::runtime_error("could not find end pos" );
+  }
+
+
+  return str.substr( start_pos, end_pos - start_pos );
+}
 // erase_all ================================================================
 
 std::string& util::erase_all( std::string& s, const std::string& from )

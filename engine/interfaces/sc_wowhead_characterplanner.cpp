@@ -25,24 +25,7 @@ std::string get_list_manager_section( unsigned list_id )
 {
   auto main_page = get_main_page( list_id );
 
-  auto start = main_page.find( "var $WowheadListManager = new ListManager(" );
-  if ( start == std::string::npos )
-  {
-    throw wowhead_charplanner::exception("Could not find list manager section start" );
-  }
-  start += sizeof("var $WowheadListManager = new ListManager(") - 1;
-  auto end = main_page.find( "\n", start);
-
-  if ( end == std::string::npos )
-  {
-    throw wowhead_charplanner::exception("Could not find list manager section end ");
-  }
-
-  std::cout << "start: " << start << "\n";
-  std::cout << "end: " << end << "\n";
-
-  return main_page.substr( start, ( end - start - sizeof(");" ) ) );
-
+  return util::get_first_substring_between( main_page, "var $WowheadListManager = new ListManager(", ");" );
 }
 
 std::string replace_date( std::string in )
@@ -66,27 +49,9 @@ rapidjson::Document get_json_list_manager_section( unsigned list_id )
   return list_manager;
 }
 
-} // unnamed namespace
-
-player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
+unsigned get_equipment_tab_id( unsigned list_id )
 {
-  return nullptr;
-}
-
-//#define UNIT_TEST_WOWHEAD
-#ifdef UNIT_TEST_WOWHEAD
-#include <iostream>
-void sim_t::errorf( const char*, ... ) { }
-uint32_t dbc::get_school_mask( school_e ) { return 0; }
-
-void print_main_page( unsigned list_id )
-{
-  std::cout << get_main_page( list_id );
-}
-
-int main()
-{
-  auto d = get_json_list_manager_section( 1564664 );
+  auto d = get_json_list_manager_section( list_id );
 
   if ( !d.HasMember( "lists" ) )
     throw wowhead_charplanner::exception("no_lists");
@@ -105,13 +70,57 @@ int main()
         equip_id = d["lists"][i]["id"].GetInt();
       }
     }
+  return equip_id;
+}
 
-  std::cout << "equip_id=" << equip_id;
+std::string get_tab_page( unsigned list_id, unsigned tab_id )
+{
+  std::string tab_page;
+  std::string url = "http://www.wowhead.com/list=" + util::to_string( list_id ) + "&tab=" + util::to_string( tab_id );
+  http::get( tab_page, url, cache::ANY );
+
+  return tab_page;
+}
+
+std::string get_equipment_tab_page( unsigned list_id )
+{
+  auto equip_id = get_equipment_tab_id( list_id );
+
+  return get_tab_page( list_id, equip_id );
+}
+
+} // unnamed namespace
+
+player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
+{
+  return nullptr;
+}
+
+#define UNIT_TEST_WOWHEAD
+#ifdef UNIT_TEST_WOWHEAD
+#include <iostream>
+void sim_t::errorf( const char*, ... ) { }
+uint32_t dbc::get_school_mask( school_e ) { return 0; }
+
+void print_main_page( unsigned list_id )
+{
+  std::cout << get_main_page( list_id );
+}
+
+int main()
+{
+  std::cout << get_list_manager_section( 1564664 ) << "\n\n";
+  std::cout << get_equipment_tab_id( 1564664 ) << "\n\n";
+  //std::cout <<  get_equipment_tab_page( 1564664 );
+
+  /*rapidjson::Document t;
+  t.Parse< 0 >( s.c_str() );
+
 
   rapidjson::StringBuffer b;
   rapidjson::PrettyWriter< rapidjson::StringBuffer > writer( b );
 
-  d.Accept( writer );
-  //std::cout << b.GetString();
+  t.Accept( writer );
+  std::cout << b.GetString();*/
 }
 #endif

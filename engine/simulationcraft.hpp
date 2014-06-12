@@ -1225,6 +1225,7 @@ void string_strip_quotes( std::string& str );
 std::string& replace_all( std::string& s, const std::string& from, const std::string& to );
 std::string replace_all_between( std::string s, const std::string& start_token, const std::string& end_token, const std::string& to);
 std::string& erase_all( std::string& s, const std::string& from );
+std::string get_first_substring_between( std::string str, const std::string& start, const std::string& end );
 
 template <typename T>
 std::string to_string( const T& t )
