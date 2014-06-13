@@ -6,7 +6,7 @@
 #define SIMULATIONCRAFT_H
 
 #define SC_MAJOR_VERSION "548"
-#define SC_MINOR_VERSION "3"
+#define SC_MINOR_VERSION "4"
 #define SC_USE_PTR ( 0 )
 #define SC_BETA ( 0 )
 
@@ -3568,6 +3568,7 @@ struct cooldown_t
 
   void set_recharge_multiplier( double );
 
+  expr_t* create_expression( action_t* a, const std::string& name_str );
 private:
   static timespan_t ready_init()
   { return timespan_t::from_seconds( -60 * 60 ); }
