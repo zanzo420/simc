@@ -1,3 +1,0 @@
-#!/bin/bash
-git dch --snapshot --debian-branch ubuntu/precise --distribution precise -a --force-distribution -N 5.4.2-1ubuntu1precise
-
