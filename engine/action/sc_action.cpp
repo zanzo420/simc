@@ -1818,6 +1818,20 @@ expr_t* action_t::create_expression( const std::string& name_str )
   }
   else if ( name_str == "cast_time" )
     return make_mem_fn_expr( name_str, *this, &action_t::execute_time );
+  else if ( name_str == "execute_time" )
+  {
+    struct execute_time_expr_t : public action_expr_t
+    {
+      execute_time_expr_t( action_t& a ) : action_expr_t( "execute_time", a )
+      {
+      }
+      double evaluate()
+      {
+        return std::max( action.execute_time().total_seconds(), action.gcd().total_seconds() );
+      }
+    };
+    return new execute_time_expr_t( *this );
+  }
   else if ( name_str == "cooldown" )
     return make_ref_expr( name_str, cooldown -> duration );
   else if ( name_str == "tick_time" )
@@ -1955,11 +1969,24 @@ expr_t* action_t::create_expression( const std::string& name_str )
     struct crit_pct_current_expr_t : public expr_t
     {
       action_t* action;
-      crit_pct_current_expr_t( action_t* a ) : expr_t( "crit_pct_current" ), action( a ) {}
+      action_state_t* state;
+
+      crit_pct_current_expr_t( action_t* a ) :
+        expr_t( "crit_pct_current" ), action( a ), state( a -> get_state() )
+      {
+        state -> n_targets = 1;
+        state -> chain_target = 0;
+      }
       virtual double evaluate()
       {
-        return action -> composite_crit() * 100.0;
+        state -> target = action -> target;
+        action -> snapshot_state( state, RESULT_TYPE_NONE );
+
+        return std::min( 100.0, state -> composite_crit() * 100.0 );
       }
+
+      virtual ~crit_pct_current_expr_t()
+      { delete state; }
     };
     return new crit_pct_current_expr_t( this );
   }
