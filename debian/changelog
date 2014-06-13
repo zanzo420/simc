@@ -1,3 +1,9 @@
+simulationcraft (5.4.8.4-1ubuntu1trusty~1) trusty; urgency=medium
+
+  * New upstream version
+
+ -- Alessandro Grassi <alessandro@aggro.it>  Fri, 13 Jun 2014 14:23:54 +0200
+
 simulationcraft (5.4.8.3-1ubuntu1trusty~1) trusty; urgency=medium
 
   * New upstream version
