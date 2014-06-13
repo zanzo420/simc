@@ -1,3 +1,10 @@
 #!/bin/bash
-git-buildpackage --git-upstream-branch=master --git-debian-branch=ubuntu/saucy --git-upstream-tree=branch -S $@
+tag="$1"
+if [ -z "${tag}" ]; then 
+  echo "Usage: $0 <tag>"
+  exit
+else
+  shift
+fi
+git-buildpackage --git-upstream-tag="${tag}" --git-upstream-branch=master --git-debian-branch=ubuntu/saucy --git-upstream-tree=tag -S $@
 
