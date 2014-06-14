@@ -372,11 +372,10 @@ bool parse_armory( sim_t*             sim,
       player_t* p;
       if ( name == "wowhead" )
       {
-        sim -> errorf( "Wowhead profiler currently not support. "
-                       "Wowhead profiler does not provide spec, talent or glyph data.\n" );
-        return false;
-
-        //p = wowhead::download_player( sim, stuff.region, stuff.server, player_name, description, wowhead::LIVE, stuff.cache );
+        p = wowhead_charplanner::download_player( sim, util::to_unsigned( stuff.names.front() ), stuff.cache );
+        sim -> active_player = p;
+        if ( ! p )
+          return false;
       }
       else if ( name == "local_json" )
         p = bcp_api::from_local_json( sim, player_name, stuff.server, description );

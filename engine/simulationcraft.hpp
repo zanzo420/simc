@@ -6402,6 +6402,7 @@ std::string decorated_buff_name( const std::string& name,
                                  bool affix = true );
 }
 
+#include "interfaces/sc_wowhead_characterplanner.hpp"
 
 // Blizzard Community Platform API ==========================================
 
