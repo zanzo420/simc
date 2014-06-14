@@ -11,6 +11,10 @@
 
 namespace {
 
+enum wowhead_tab_types {
+  TAB_EQUIPMENT = -1,
+  TAB_TALENTS = -4,
+};
 // WOWHEAD ID translations, starting at 1: slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
 
 std::string get_main_page( unsigned list_id, cache::behavior_e caching )
@@ -50,7 +54,7 @@ rapidjson::Document get_json_list_manager_section( unsigned list_id, cache::beha
   return list_manager;
 }
 
-unsigned get_equipment_tab_id( const rapidjson::Document& list_manager, cache::behavior_e caching )
+unsigned get_tab_id( const rapidjson::Document& list_manager, wowhead_tab_types tab_type )
 {
   if ( !list_manager.HasMember( "lists" ) )
     throw wowhead_charplanner::exception("no_lists");
@@ -64,7 +68,7 @@ unsigned get_equipment_tab_id( const rapidjson::Document& list_manager, cache::b
         throw wowhead_charplanner::exception("list entry has no type." );
 
       int k = list_manager["lists"][i]["type"].GetInt();
-      if ( k == -1 ) // Equipment Set List
+      if ( k == static_cast<int>(tab_type) )
       {
         equip_id = list_manager["lists"][i]["id"].GetInt();
       }
@@ -81,15 +85,15 @@ std::string get_tab_page( unsigned list_id, unsigned tab_id, cache::behavior_e c
   return tab_page;
 }
 
-std::string get_equipment_tab_page( unsigned list_id, const rapidjson::Document& list_manager, cache::behavior_e caching )
+std::string get_tab_page( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
 {
-  return get_tab_page( list_id, get_equipment_tab_id( list_manager, caching ), caching );
+  return get_tab_page( list_id, get_tab_id( list_manager, tab_type ), caching );
 }
 
 
-rapidjson::Document get_equipment_tab_data( unsigned list_id, const rapidjson::Document& list_manager, cache::behavior_e caching )
+rapidjson::Document get_tab_data( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
 {
-  std::string s = get_equipment_tab_page( list_id, list_manager, caching );
+  std::string s = get_tab_page( list_id, list_manager, tab_type, caching );
   std::string filtered = "{" + util::get_first_substring_between( s, "{", ");" );
 
   rapidjson::Document out;
@@ -112,6 +116,11 @@ void pretty_print_json( Out& out, const rapidjson::Document& doc )
 void parse_equipment_data( sim_t* sim, player_t* p, const rapidjson::Document& equipment_tab )
 {
   // TODO: parse equip stuff into the player
+}
+
+void parse_talent_data( sim_t* sim, player_t* p, const rapidjson::Document& talent_tab )
+{
+  // TODO: parse talent stuff into the player
 }
 
 } // unnamed namespace
@@ -240,26 +249,25 @@ player_t* wowhead_charplanner::download_player( sim_t* sim,
   p -> _spec = character_spec;
 
   for( size_t i = 0; i < character_professions.size(); ++i ) {
+    if ( i > 0 )
+      p -> professions_str += "/";
 
-    p -> profession[ character_professions[ i ].first ] = character_professions[ i ].second;
+    p -> professions_str += util::profession_type_string( character_professions[ i ].first );
+    p -> professions_str += "=";
+    p -> professions_str += util::to_string( character_professions[ i ].second );
   }
 
-  rapidjson::Document equipment_tab = get_equipment_tab_data( list_id, list_manager, caching );
+  rapidjson::Document equipment_tab = get_tab_data( list_id, list_manager, TAB_EQUIPMENT, caching );
   parse_equipment_data( sim, p, equipment_tab );
 
+  rapidjson::Document talents_tab = get_tab_data( list_id, list_manager, TAB_TALENTS, caching );
+  parse_talent_data( sim, p, talents_tab );
   return p;
 }
 
 //#define UNIT_TEST_WOWHEAD
 #ifdef UNIT_TEST_WOWHEAD
 #include <iostream>
-void sim_t::errorf( const char*, ... ) { }
-uint32_t dbc::get_school_mask( school_e ) { return 0; }
-
-void print_main_page( unsigned list_id )
-{
-  std::cout << get_main_page( list_id, cache::ANY );
-}
 
 int main()
 {
@@ -267,9 +275,13 @@ int main()
   //std::cout << get_equipment_tab_id( 1564664 ) << "\n\n";
   //std::cout <<  get_equipment_tab_page( 1564664 );
 
-  //pretty_print_json( get_json_list_manager_section( std::cout, 1564664 ) );
-  //std::cout << "\n\n\n";
-  //pretty_print_json( get_equipment_tab_data( std::cout, 1564664 ) );
+  cache::behavior_e cache = cache::ANY;
+  rapidjson::Document list_manager = get_json_list_manager_section(  1564664, cache );
+  pretty_print_json( std::cout, list_manager );
+  std::cout << "\n\n\n";
+  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_EQUIPMENT, cache ) );
+  std::cout << "\n\n\n";
+  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_TALENTS, cache ) );
   //wowhead_charplanner::create_player( 1564664 );
 }
 #endif

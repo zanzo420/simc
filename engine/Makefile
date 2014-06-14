@@ -155,7 +155,10 @@ optimized:CPP_FLAGS += -DNDEBUG -std=c++0x
 optimized:OPTS += -march=native -ffast-math -fomit-frame-pointer
 optimized: $(MODULE)
 
+wowh$(MODULE_EXT):OPTS += -DUNIT_TEST_WOWHEAD
+
 install: all
+
 ifneq (${PREFIX},..)
 	$(MKDIR) -p $(BIN_INSTALL_PATH)
 endif
@@ -195,9 +198,9 @@ rng$(MODULE_EXT): util$(PATHSEP)rng.cpp
 	-@echo [$@] Linking
 	$(CXX) $(CPP_FLAGS) -DUNIT_TEST $(OPTS) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $@
 	
-wowh$(MODULE_EXT): interfaces$(PATHSEP)sc_wowhead_characterplanner.cpp interfaces$(PATHSEP)sc_http.cpp util$(PATHSEP)io.cpp util$(PATHSEP)concurrency.cpp sc_util.cpp
+wowh$(MODULE_EXT): $(filter-out %sc_main.$(OBJ_EXT), $(SRC_OBJ))
 	-@echo [$@] Linking
-	$(CXX) $(CPP_FLAGS) -DUNIT_TEST_WOWHEAD $(OPTS) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $@
+	$(CXX) $(CPP_FLAGS) $(OPTS) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $@
 	
 timeline$(MODULE_EXT): util$(PATHSEP)timeline.hpp util$(PATHSEP)timeline.cpp
 	-@echo [$@] Linking
