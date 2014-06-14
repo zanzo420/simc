@@ -50,25 +50,23 @@ rapidjson::Document get_json_list_manager_section( unsigned list_id, cache::beha
   return list_manager;
 }
 
-unsigned get_equipment_tab_id( unsigned list_id, cache::behavior_e caching )
+unsigned get_equipment_tab_id( const rapidjson::Document& list_manager, cache::behavior_e caching )
 {
-  rapidjson::Document d = get_json_list_manager_section( list_id, caching );
-
-  if ( !d.HasMember( "lists" ) )
+  if ( !list_manager.HasMember( "lists" ) )
     throw wowhead_charplanner::exception("no_lists");
 
 
     int equip_id = -1;
-    assert(d["lists"].IsArray());
-    for (rapidjson::SizeType i = 0; i < d["lists"].Size(); ++i )
+    assert(list_manager["lists"].IsArray());
+    for (rapidjson::SizeType i = 0; i < list_manager["lists"].Size(); ++i )
     {
-      if ( !d["lists"][i].HasMember( "type" ) )
+      if ( !list_manager["lists"][i].HasMember( "type" ) )
         throw wowhead_charplanner::exception("list entry has no type." );
 
-      int k = d["lists"][i]["type"].GetInt();
+      int k = list_manager["lists"][i]["type"].GetInt();
       if ( k == -1 ) // Equipment Set List
       {
-        equip_id = d["lists"][i]["id"].GetInt();
+        equip_id = list_manager["lists"][i]["id"].GetInt();
       }
     }
   return equip_id;
@@ -83,25 +81,23 @@ std::string get_tab_page( unsigned list_id, unsigned tab_id, cache::behavior_e c
   return tab_page;
 }
 
-std::string get_equipment_tab_page( unsigned list_id, cache::behavior_e caching )
+std::string get_equipment_tab_page( unsigned list_id, const rapidjson::Document& list_manager, cache::behavior_e caching )
 {
-  return get_tab_page( list_id, get_equipment_tab_id( list_id, caching ), caching );
+  return get_tab_page( list_id, get_equipment_tab_id( list_manager, caching ), caching );
 }
 
 
-rapidjson::Document get_equipment_tab_data( unsigned list_id, cache::behavior_e caching )
+rapidjson::Document get_equipment_tab_data( unsigned list_id, const rapidjson::Document& list_manager, cache::behavior_e caching )
 {
-  std::string s = get_equipment_tab_page( list_id, caching );
+  std::string s = get_equipment_tab_page( list_id, list_manager, caching );
   std::string filtered = "{" + util::get_first_substring_between( s, "{", ");" );
 
   rapidjson::Document out;
   out.Parse< 0 >( filtered.c_str() );
 
-  if ( out.HasParseError() )
-    throw wowhead_charplanner::exception(std::string("Equipment Data Tab Parse error: ") + out.GetParseError() );
-
   return out;
 }
+
 
 template <typename Out>
 void pretty_print_json( Out& out, const rapidjson::Document& doc )
@@ -113,6 +109,10 @@ void pretty_print_json( Out& out, const rapidjson::Document& doc )
   out << b.GetString();
 }
 
+void parse_equipment_data( sim_t* sim, player_t* p, const rapidjson::Document& equipment_tab )
+{
+  // TODO: parse equip stuff into the player
+}
 
 } // unnamed namespace
 
@@ -230,17 +230,22 @@ player_t* wowhead_charplanner::download_player( sim_t* sim,
   player_t* p = sim -> active_player = module -> create_player( sim, character_name, character_race );
   if ( ! p )
   {
-    sim -> errorf( "BCP API: Unable to build player with class '%s' and name '%s' from '%u'.\n",
+    sim -> errorf( "WOWHEAD API: Unable to build player with class '%s' and name '%s' from '%u'.\n",
                    util::player_type_string( character_class ), character_name.c_str(), list_id );
     return nullptr;
   }
 
   p -> level = character_level;
 
+  p -> _spec = character_spec;
+
   for( size_t i = 0; i < character_professions.size(); ++i ) {
 
     p -> profession[ character_professions[ i ].first ] = character_professions[ i ].second;
   }
+
+  rapidjson::Document equipment_tab = get_equipment_tab_data( list_id, list_manager, caching );
+  parse_equipment_data( sim, p, equipment_tab );
 
   return p;
 }
