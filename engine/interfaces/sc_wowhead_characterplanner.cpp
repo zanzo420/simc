@@ -24,7 +24,7 @@ std::string get_main_page( unsigned list_id )
 
 std::string get_list_manager_section( unsigned list_id )
 {
-  auto main_page = get_main_page( list_id );
+  std::string main_page = get_main_page( list_id );
 
   return util::get_first_substring_between( main_page, "var $WowheadListManager = new ListManager(", ");" );
 }
@@ -39,7 +39,7 @@ std::string replace_date( std::string in )
 
 rapidjson::Document get_json_list_manager_section( unsigned list_id )
 {
-  auto list_manager_str = replace_date( get_list_manager_section( list_id ) );
+  std::string list_manager_str = replace_date( get_list_manager_section( list_id ) );
 
   rapidjson::Document list_manager;
   list_manager.Parse< 0 >( list_manager_str.c_str() );
@@ -52,7 +52,7 @@ rapidjson::Document get_json_list_manager_section( unsigned list_id )
 
 unsigned get_equipment_tab_id( unsigned list_id )
 {
-  auto d = get_json_list_manager_section( list_id );
+  rapidjson::Document d = get_json_list_manager_section( list_id );
 
   if ( !d.HasMember( "lists" ) )
     throw wowhead_charplanner::exception("no_lists");
@@ -65,7 +65,7 @@ unsigned get_equipment_tab_id( unsigned list_id )
       if ( !d["lists"][i].HasMember( "type" ) )
         throw wowhead_charplanner::exception("list entry has no type." );
 
-      auto k = d["lists"][i]["type"].GetInt();
+      int k = d["lists"][i]["type"].GetInt();
       if ( k == -1 ) // Equipment Set List
       {
         equip_id = d["lists"][i]["id"].GetInt();
@@ -85,16 +85,14 @@ std::string get_tab_page( unsigned list_id, unsigned tab_id )
 
 std::string get_equipment_tab_page( unsigned list_id )
 {
-  auto equip_id = get_equipment_tab_id( list_id );
-
-  return get_tab_page( list_id, equip_id );
+  return get_tab_page( list_id, get_equipment_tab_id( list_id ) );
 }
 
 
 rapidjson::Document get_equipment_tab_data( unsigned list_id )
 {
-  auto s = get_equipment_tab_page( list_id );
-  auto filtered = "{" + util::get_first_substring_between( s, "{", ");" );
+  std::string s = get_equipment_tab_page( list_id );
+  std::string filtered = "{" + util::get_first_substring_between( s, "{", ");" );
 
   rapidjson::Document out;
   out.Parse< 0 >( filtered.c_str() );
@@ -111,7 +109,7 @@ player_t* wowhead_charplanner::create_player( unsigned /* list_id */ )
   return nullptr;
 }
 
-#define UNIT_TEST_WOWHEAD
+//#define UNIT_TEST_WOWHEAD
 #ifdef UNIT_TEST_WOWHEAD
 #include <iostream>
 void sim_t::errorf( const char*, ... ) { }
@@ -124,11 +122,11 @@ void print_main_page( unsigned list_id )
 
 int main()
 {
-  std::cout << get_list_manager_section( 1564664 ) << "\n\n";
-  std::cout << get_equipment_tab_id( 1564664 ) << "\n\n";
+  //std::cout << get_list_manager_section( 1564664 ) << "\n\n";
+  //std::cout << get_equipment_tab_id( 1564664 ) << "\n\n";
   //std::cout <<  get_equipment_tab_page( 1564664 );
 
-  auto t = get_equipment_tab_data( 1564664 );
+  rapidjson::Document t = get_equipment_tab_data( 1564664 );
 
 
   rapidjson::StringBuffer b;

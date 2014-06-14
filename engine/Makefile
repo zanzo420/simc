@@ -197,7 +197,7 @@ rng$(MODULE_EXT): util$(PATHSEP)rng.cpp
 	
 wowh$(MODULE_EXT): interfaces$(PATHSEP)sc_wowhead_characterplanner.cpp interfaces$(PATHSEP)sc_http.cpp util$(PATHSEP)io.cpp util$(PATHSEP)concurrency.cpp sc_util.cpp
 	-@echo [$@] Linking
-	$(CXX) $(CPP_FLAGS) -std=c++0x -DUNIT_TEST_WOWHEAD $(OPTS) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $@
+	$(CXX) $(CPP_FLAGS) -DUNIT_TEST_WOWHEAD $(OPTS) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $@
 	
 timeline$(MODULE_EXT): util$(PATHSEP)timeline.hpp util$(PATHSEP)timeline.cpp
 	-@echo [$@] Linking
