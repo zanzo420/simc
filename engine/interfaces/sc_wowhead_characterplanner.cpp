@@ -118,7 +118,7 @@ void parse_equipment_data( sim_t* sim, player_t* p, const rapidjson::Document& e
   // TODO: parse equip stuff into the player
 }
 
-void parse_talent_data( sim_t* sim, player_t* p, const rapidjson::Document& talent_tab )
+void parse_talent_and_glyph_data( sim_t* sim, player_t* p, const rapidjson::Document& talent_tab )
 {
   // TODO: parse talent stuff into the player
 }
@@ -261,7 +261,7 @@ player_t* wowhead_charplanner::download_player( sim_t* sim,
   parse_equipment_data( sim, p, equipment_tab );
 
   rapidjson::Document talents_tab = get_tab_data( list_id, list_manager, TAB_TALENTS, caching );
-  parse_talent_data( sim, p, talents_tab );
+  parse_talent_and_glyph_data( sim, p, talents_tab );
   return p;
 }
 
