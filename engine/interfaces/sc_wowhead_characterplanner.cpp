@@ -125,15 +125,29 @@ void parse_equipment_data( sim_t* sim, player_t* p, const wowhead_tab_t& equipme
   // WOWHEAD item array entries:
   // slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
 
-  if ( ! equipment_tab.content.HasMember( util::to_string( equipment_tab.tab_id ).c_str() ) || equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ].IsArray() )
+  if ( ! equipment_tab.content.HasMember( util::to_string( equipment_tab.tab_id ).c_str() ) || !equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ].IsArray() )
   {
     sim -> errorf( "WOWHEAD API: Unable to extract player equip from '%s'.\n", p -> name() );
   }
   const rapidjson::Value& equip_list= equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ];
   for (rapidjson::SizeType i = 0; i < equip_list.Size(); ++i )
   {
-    int wowh_slot_id = equip_list[ i ][ rapidjson::SizeType(0) ].GetInt();
+    const rapidjson::Value& wowh_item = equip_list[ i ];
+    int wowh_slot_id = wowh_item[ rapidjson::SizeType(0) ].GetInt();
     slot_e our_slot = static_cast<slot_e>( wowh_slot_id - 1 );
+    if ( our_slot == SLOT_INVALID || our_slot >= SLOT_MAX )
+      continue;
+
+    item_t& item = p -> items[ our_slot ];
+
+    item.parsed.data.id = wowh_item[ 1 ].GetUint();
+    item.parsed.enchant_id = wowh_item[ 3 ].GetUint();
+    item.parsed.addon_id = wowh_item[ 4 ].GetUint();
+    item.parsed.gem_id[ 0 ] = wowh_item[ 5 ].GetUint();
+    item.parsed.gem_id[ 1 ] = wowh_item[ 6 ].GetUint();
+    item.parsed.gem_id[ 2 ] = wowh_item[ 7 ].GetUint();
+    item.parsed.gem_id[ 3 ] = wowh_item[ 8 ].GetUint();
+    item.parsed.upgrade_level = wowh_item[ 10 ].GetUint();
 
   }
 }
