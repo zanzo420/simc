@@ -119,25 +119,36 @@ void pretty_print_json( Out& out, const rapidjson::Document& doc )
   out << b.GetString();
 }
 
-void parse_equipment_data( sim_t* sim, player_t* p, const wowhead_tab_t& equipment_tab )
+bool parse_equipment_data( sim_t* sim, player_t* p, const wowhead_tab_t& equipment_tab )
 {
   // TODO: parse equip stuff into the player
 
   // WOWHEAD item array entries:
   // slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
 
-  if ( ! equipment_tab.content.HasMember( util::to_string( equipment_tab.tab_id ).c_str() ) || !equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ].IsArray() )
+  std::string tab_id = util::to_string( equipment_tab.tab_id );
+  if (   !equipment_tab.content.HasMember( tab_id.c_str() )
+      || !equipment_tab.content[ tab_id.c_str() ].IsArray() )
   {
     sim -> errorf( "WOWHEAD API: Unable to extract player equip from '%s'.\n", p -> name() );
+    return false;
   }
-  const rapidjson::Value& equip_list= equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ];
+  const rapidjson::Value& equip_list = equipment_tab.content[ tab_id.c_str() ];
   for (rapidjson::SizeType i = 0; i < equip_list.Size(); ++i )
   {
     const rapidjson::Value& wowh_item = equip_list[ i ];
-    int wowh_slot_id = wowh_item[ rapidjson::SizeType(0) ].GetInt();
+    if (   !wowh_item.IsArray()
+        || wowh_item.Size() != 13 )
+    {
+      sim -> errorf( "WOWHEAD API: Unable to parse item with index '%u' of player '%s'.\n", i, p -> name() );
+      continue;
+    }
+
+    int wowh_slot_id = wowh_item[ 0u ].GetInt();
     slot_e our_slot = static_cast<slot_e>( wowh_slot_id - 1 );
     if ( our_slot == SLOT_INVALID || our_slot >= SLOT_MAX )
       continue;
+
 
     item_t& item = p -> items[ our_slot ];
 
@@ -151,18 +162,27 @@ void parse_equipment_data( sim_t* sim, player_t* p, const wowhead_tab_t& equipme
     item.parsed.upgrade_level = wowh_item[ 10 ].GetUint();
 
   }
+
+  return true;
 }
 
-void parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& talent_tab )
+bool parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& talent_tab )
 {
   //pretty_print_json( std::cout, talent_tab.content );
   // TODO: parse talents and glyphs into the player
   std::string tab_id = util::to_string( talent_tab.tab_id );
-  if ( ! talent_tab.content.HasMember( tab_id.c_str() ) || !talent_tab.content[ tab_id.c_str() ].IsArray() )
+  if (   !talent_tab.content.HasMember( tab_id.c_str() )
+      || !talent_tab.content[ tab_id.c_str() ].IsArray() )
   {
-    sim -> errorf( "WOWHEAD API: Unable to extract player equip from '%s'.\n", p -> name() );
+    sim -> errorf( "WOWHEAD API: Unable to extract player talent/glyph data from '%s'.\n", p -> name() );
+    return false;
   }
   rapidjson::SizeType active_spec = 0;
+  if (   !talent_tab.content[ tab_id.c_str() ].Size() > active_spec )
+  {
+    sim -> errorf( "WOWHEAD API: Unable to extract player talent/glyph data from '%s'.\n", p -> name() );
+    return false;
+  }
   const rapidjson::Value& talent_spec_list= talent_tab.content[ tab_id.c_str() ][ active_spec ];
 
   std::string talent_encoding = util::to_string( talent_spec_list[ 2 ].GetUint() );
@@ -176,6 +196,8 @@ void parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& 
 
   p -> create_talents_armory();
   */
+
+  return true;
 
 }
 
