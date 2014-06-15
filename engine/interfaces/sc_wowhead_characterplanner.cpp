@@ -52,6 +52,8 @@ rapidjson::Document get_json_list_manager_section( unsigned list_id, cache::beha
   return list_manager;
 }
 
+/* Retrieves the first tab id with the given tab type in the given list_manager
+ */
 unsigned get_tab_id( const rapidjson::Document& list_manager, wowhead_tab_types tab_type )
 {
   if ( !list_manager.HasMember( "lists" ) )
