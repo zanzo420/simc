@@ -186,7 +186,7 @@ bool parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& 
     return false;
   }
   const rapidjson::Value& talent_spec_list= talent_tab.content[ tab_id.c_str() ][ active_spec ];
-  if (   ! talent_spec_list.IsArray() || talent_spec_list.Size() != 10 )
+  if (   ! talent_spec_list.IsArray() || talent_spec_list.Size() >= 3 )
   {
     sim -> errorf( "WOWHEAD API: Unable to extract player talent/glyph data from '%s'.\n", p -> name() );
     return false;
@@ -203,7 +203,6 @@ bool parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& 
   p -> create_talents_armory();
   */
 
-  // unsigned dbc_t::glyph_spell_id( unsigned property_id ) const;
   for (rapidjson::SizeType i = 3; i < talent_spec_list.Size(); ++i )
   {
     unsigned glyph_property_id = talent_spec_list[ i ].GetUint();
