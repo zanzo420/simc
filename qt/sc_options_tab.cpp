@@ -22,13 +22,13 @@ const OptionEntry buffOptions[] =
   { "Toggle All Buffs",             "",                                 "Toggle all buffs on/off"                         },
   { "Attack Power Multiplier",      "override.attack_power_multiplier", "+10% Attack Power Multiplier"                    },
   { "Spell Power Multiplier",       "override.spell_power_multiplier",  "+10% Spell Power Multiplier"                     },
-  { "Haste",                        "override.haste",                   "+5% Haste"                                       },
-
   { "Critical Strike",              "override.critical_strike",         "+5% Melee/Ranged/Spell Critical Strike Chance"   },
+  { "Haste",                        "override.haste",                   "+5% Haste"                                       },
+  { "Multistrike",                  "override.multistrike",             "+5% Multistrike"                                 },
   { "Mastery",                      "override.mastery",                 "+5 Mastery"                                      },
-
   { "Stamina",                      "override.stamina",                 "+10% Stamina"                                    },
   { "Strength, Agility, Intellect", "override.str_agi_int",             "+5% Strength, Agility, Intellect"                },
+  { "Versatility",                  "override.versatility",             "+3% Versatility"                                 },
 
   { "Bloodlust",                    "override.bloodlust",               "Ancient Hysteria\nBloodlust\nHeroism\nTime Warp" },
   { NULL, NULL, NULL }
@@ -50,8 +50,7 @@ const OptionEntry debuffOptions[] =
   { "Toggle All Debuffs",     "",                                "Toggle all debuffs on/off"      },
 
   { "Bleeding",               "override.bleeding",               "Rip\nRupture\nPiercing Shots"   },
-  { "Physical Vulnerability", "override.physical_vulnerability", "Physical Vulnerability (+4%)"   },
-  { "Magic Vulnerability",    "override.magic_vulnerability",    "Magic Vulnerability (+5%)"      },
+  { "Mortal Wounds",          "override.mortal_wounds",          "Healing Debuff"                 },
 
   { NULL, NULL, NULL }
 };
@@ -68,16 +67,17 @@ const OptionEntry scalingOptions[] =
   { "Analyze Spell Power",              "sp",       "Calculate scale factors for Spell Power"              },
   { "Analyze Attack Power",             "ap",       "Calculate scale factors for Attack Power"             },
   { "Analyze Crit Rating",              "crit",     "Calculate scale factors for Crit Rating"              },
-  { "Analyze Multistrike Rating",       "mult",     "Calculate scale factors for Multistrike Rating"       },
-  { "Analyze Readiness Rating",         "readiness",  "Calculate scale factors for Readiness Rating"         },
   { "Analyze Haste Rating",             "haste",    "Calculate scale factors for Haste Rating"             },
   { "Analyze Mastery Rating",           "mastery",  "Calculate scale factors for Mastery Rating"           },
+  { "Analyze Multistrike Rating",       "mult",     "Calculate scale factors for Multistrike Rating"       },
+  { "Analyze Readiness Rating",         "readiness",  "Calculate scale factors for Readiness Rating"         },
+  { "Analyze Versatility Rating",       "vers",     "Calculate scale factors for Versatility Rating"       },
   { "Analyze Weapon DPS",               "wdps",     "Calculate scale factors for Weapon DPS"               },
   { "Analyze Weapon Speed",             "wspeed",   "Calculate scale factors for Weapon Speed"             },
   { "Analyze Off-hand Weapon DPS",      "wohdps",   "Calculate scale factors for Off-hand Weapon DPS"      },
   { "Analyze Off-hand Weapon Speed",    "wohspeed", "Calculate scale factors for Off-hand Weapon Speed"    },
   { "Analyze Armor",                    "armor",    "Calculate scale factors for Armor"                    },
-  { "Analyze Bonus Armor",              "bonusarmor",   "Calculate scale factors for Bonus Armor"              },
+  { "Analyze Bonus Armor",              "bonusarmor",   "Calculate scale factors for Bonus Armor"          },
   { "Analyze Latency",                  "",         "Calculate scale factors for Latency"                  },
   { NULL, NULL, NULL }
 };
@@ -96,6 +96,7 @@ const OptionEntry plotOptions[] =
   { "Plot Scaling per Mastery Rating",   "mastery", "Generate Scaling curve for Mastery Rating"   },
   { "Plot Scaling per Multistrike Rating", "mult",  "Generate Scaling curve for Multistrike Rating" },
   { "Plot Scaling per Readiness Rating", "readiness", "Generate Scaling curve for Readiness Rating" },
+  { "Plot Scaling per Versatility Rating", "vers",  "Generate Scaling curve for Versatility Rating" },
   { "Plot Scaling per Weapon DPS",       "wdps",    "Generate Scaling curve for Weapon DPS"       },
   { "Plot Scaling per Armor",            "armor",   "Generate Scaling curve for Armor"            },
   { "Plot Scaling per Bonus Armor",      "bonusarmor",  "Generate Scaling curve for Bonus Armor"      },
@@ -110,6 +111,7 @@ const OptionEntry reforgePlotOptions[] =
   { "Plot Reforge Options for Mastery Rating",   "mastery", "Generate reforge plot data for Mastery Rating"   },
   { "Plot Reforge Options for Multistrike Rating", "mult",  "Generate reforge plot data for Multistrike Rating" },
   { "Plot Reforge Options for Readiness Rating", "readiness", "Generate reforge plot data for Readiness Rating" },
+  { "Plot Reforge Options for Versatility Rating", "vers",  "Generate reforge plot data for Versatility Rating" },
   { "Plot Reforge Options for Bonus Armor Rating", "bonusarmor", "Generate reforge plot data for Bonus Armor" },
 
   { "Plot Reforge Options for Strength",         "str",     "Generate reforge plot data for Intellect"        },
@@ -118,7 +120,16 @@ const OptionEntry reforgePlotOptions[] =
   { "Plot Reforge Options for Intellect",        "int",     "Generate reforge plot data for Intellect"        },
   { NULL, NULL, NULL }
 };
-const int reforgePlotOption_cut = 7; // separate between secondary and primary stats
+const int reforgePlotOption_cut = 8; // separate between secondary and primary stats
+
+QComboBox* createChoiceFromRange( int lowerInclusive, int upperInclusive ) {
+  QComboBox* choice = new QComboBox();
+  for ( int i = lowerInclusive; i <= upperInclusive; i++ ) {
+    QString choiceText = QString::number(i);
+    choice -> addItem( choiceText );
+  }
+  return choice;
+}
 
 QComboBox* createChoice( int count, ... )
 {
@@ -218,7 +229,7 @@ void SC_OptionsTab::createGlobalsTab()
   globalsLayout_left -> addRow( tr(   "Num Enemies" ),     choice.num_target = createChoice( 8, "1", "2", "3", "4", "5", "6", "7", "8" ) );
   globalsLayout_left -> addRow( tr( "Challenge Mode" ),   choice.challenge_mode = createChoice( 2, "Disabled", "Enabled" ) );
   globalsLayout_left -> addRow( tr(  "Player Skill" ),   choice.player_skill = createChoice( 4, "Elite", "Good", "Average", "Ouch! Fire is hot!" ) );
-  globalsLayout_left -> addRow( tr(       "Threads" ),        choice.threads = addValidatorToComboBox( 1, QThread::idealThreadCount(), createChoice( 5, "1", "2", "3", "4", "8" ) ) );
+  globalsLayout_left -> addRow( tr(       "Threads" ),        choice.threads = addValidatorToComboBox( 1, QThread::idealThreadCount(), createChoiceFromRange( 1, QThread::idealThreadCount() ) ) );
   globalsLayout_left -> addRow( tr( "Armory Region" ),  choice.armory_region = createChoice( 5, "us", "eu", "tw", "cn", "kr" ) );
   globalsLayout_left -> addRow( tr(   "Armory Spec" ),    choice.armory_spec = createChoice( 2, "active", "inactive" ) );
   globalsLayout_left -> addRow( tr(  "Default Role" ),   choice.default_role = createChoice( 4, "auto", "dps", "heal", "tank" ) );
@@ -233,7 +244,7 @@ void SC_OptionsTab::createGlobalsTab()
   // Create right side of global options
   QFormLayout* globalsLayout_right = new QFormLayout();
   globalsLayout_right -> setFieldGrowthPolicy( QFormLayout::FieldsStayAtSizeHint );
-  globalsLayout_right -> addRow( tr( "Aura Delay" ),               choice.aura_delay = createChoice( 3, "400ms", "500ms", "600ms" ) );
+  globalsLayout_right -> addRow( tr( "Aura Delay" ),               choice.aura_delay = createChoice( 4, "300ms", "400ms", "500ms", "600ms" ) );
   globalsLayout_right -> addRow( tr( "Generate Debug" ),                choice.debug = createChoice( 3, "None", "Log Only", "Gory Details" ) );
   globalsLayout_right -> addRow( tr( "Report Pets Separately" ),  choice.report_pets = createChoice( 2, "Yes", "No" ) );
   globalsLayout_right -> addRow( tr( "Report Print Style" ),      choice.print_style = createChoice( 3, "MoP", "White", "Classic" ) );
@@ -534,7 +545,7 @@ void SC_OptionsTab::decodeOptions()
   load_setting( settings, "show_etmi", choice.show_etmi );
   load_setting( settings, "world_lag", choice.world_lag );
   load_setting( settings, "target_level", choice.target_level );
-  load_setting( settings, "aura_delay", choice.aura_delay, "500ms" );
+  load_setting( settings, "aura_delay", choice.aura_delay, "300ms" );
   load_setting( settings, "report_pets", choice.report_pets, "No" );
   load_setting( settings, "print_style", choice.print_style );
   load_setting( settings, "statistics_level", choice.statistics_level, "1" );
@@ -572,7 +583,7 @@ void SC_OptionsTab::decodeOptions()
       {
         if ( ! item_db_order[ i ].compare( itemDbOrder -> item( k ) -> data( Qt::UserRole ).toString() ) )
         {
-          itemDbOrder -> insertItem( i, itemDbOrder -> takeItem( k ) );
+          itemDbOrder -> addItem( itemDbOrder -> takeItem( k ) );
         }
       }
 
@@ -792,7 +803,7 @@ QString SC_OptionsTab::get_globalSettings()
   options += "\n";
 
 
-  const char *auradelay[] = { "0.4", "0.5", "0.6" };
+  const char *auradelay[] = { "0.3", "0.4", "0.5", "0.6" };
   options += "default_aura_delay=";
   options += auradelay[ choice.aura_delay->currentIndex() ];
   options += "\n";

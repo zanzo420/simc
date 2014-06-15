@@ -492,8 +492,9 @@ class CombatRatingsDataGenerator(DataGenerator):
     _combat_ratings = [ 'Dodge',        'Parry',        'Block',       'Melee hit',  'Ranged hit', 
                         'Spell hit',    'Melee crit',   'Ranged crit', 'Spell crit', 'PvP Resilience',
                         'Melee haste',  'Ranged haste', 'Spell haste', 'Expertise',  'Mastery',
-                        'PvP Power',    'Multistrike',  'Readiness' ]
-    _combat_rating_ids = [ 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 17, 18, 19, 23, 25, 26, 11, 12 ] 
+                        'PvP Power',    'Multistrike',  'Readiness',
+                        'Damage Versatility', 'Healing Versatility', 'Mitigation Versatility' ]
+    _combat_rating_ids = [ 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 17, 18, 19, 23, 25, 26, 11, 12, 28, 29, 30 ]
     def __init__(self, options):
         # Hardcode these, as we need two different kinds of databases for output, using the same combat rating ids
         self._dbc = [ 'gtCombatRatings' ]
@@ -1235,7 +1236,7 @@ class SpellDataGenerator(DataGenerator):
          116631,                    # Colossus
          105617,                    # Alchemist's Flask
          137596,                    # Capacitance
-         104510, 104423             # Windsong Mastery / Haste buffs
+         104510, 104423,            # Windsong Mastery / Haste buffs
         ),
         
         # Warrior:
@@ -1321,11 +1322,11 @@ class SpellDataGenerator(DataGenerator):
           ( 114093, 0 ),                                # Ascendance: Stormblast, offhand melee swing,
           ( 114074, 0 ), ( 114738, 0 ),                 # Ascendance: Lava Beam, Lava Beam overload
           ( 120687, 0 ), ( 120588, 0 ),                 # Stormlash, Elemental Blast overload
-          ( 58859,  5 ),                                # Spirit Wolf: Spirit Bite
           ( 121617, 0 ),                                # Ancestral Swiftness 5% haste passive
           ( 25504, 0, False ), ( 33750, 0, False ),     # Windfury passives are not directly activatable
           ( 8034, 0, False ),                           # Frostbrand false positive for activatable
           ( 145002, 0, False ),                         # Lightning Elemental nuke
+          ( 157348, 5 ), ( 157331, 5 )                  # Storm elemental spells
         ),
         
         # Mage:
@@ -1662,15 +1663,15 @@ class SpellDataGenerator(DataGenerator):
             spell.add_power(spell_power_data)
         
         # For builds 15589+, map SpellMisc.dbc to spell ids
-        for spell_misc_id, spell_misc_data in self._spellmisc_db.iteritems():
-            if not spell_misc_data.id_spell:
-                continue
-            
-            spell = self._spell_db[spell_misc_data.id_spell]
-            if not spell.id:
-                continue
-            
-            spell.add_misc(spell_misc_data)
+        #for spell_misc_id, spell_misc_data in self._spellmisc_db.iteritems():
+        #    if not spell_misc_data.id_spell:
+        #        continue
+        #    
+        #    spell = self._spell_db[spell_misc_data.id_spell]
+        #    if not spell.id:
+        #        continue
+        #    
+        #    spell.add_misc(spell_misc_data)
 
         # For WoD, map ItemSetSpell.dbc to ItemSet.dbc
         for isb_id, data in self._itemsetspell_db.iteritems():
@@ -1687,7 +1688,6 @@ class SpellDataGenerator(DataGenerator):
                 continue
             
             item.spells.append(data)
-
         
         return True
     
@@ -2172,9 +2172,9 @@ class SpellDataGenerator(DataGenerator):
                 sys.stderr.write('Spell id %d not found\n') % id
                 continue
             
-            if len(spell._misc) > 1:
-                sys.stderr.write('Spell id %u (%s) has more than one SpellMisc.dbc entry\n' % ( spell.id, spell.name ) )
-                continue
+            #if len(spell._misc) > 1:
+            #    sys.stderr.write('Spell id %u (%s) has more than one SpellMisc.dbc entry\n' % ( spell.id, spell.name ) )
+            #    continue
 
             for power in spell._powers:
                 if power == None:

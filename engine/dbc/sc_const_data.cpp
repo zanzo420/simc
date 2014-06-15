@@ -184,7 +184,7 @@ std::vector< std::vector< const spell_data_t* > > ptr_class_family_index;
 } // ANONYMOUS namespace ====================================================
 
 int dbc::build_level( bool ptr )
-{ return maybe_ptr( ptr ) ? 17345 : 18322; }
+{ return maybe_ptr( ptr ) ? 17345 : 18379; }
 
 const char* dbc::wow_version( bool ptr )
 { return maybe_ptr( ptr ) ? "5.4.0" : "6.0.1"; }
@@ -326,30 +326,16 @@ void dbc::apply_hotfixes()
   // Warrior
 
   // Druid
-  s = spell_data_t::find( 164812, false );
-  assert( s -> duration() != timespan_t::from_millis( 20000 ) && "Check Druid Dot Duration" );
-  s -> _duration = 20000;
+  s = spell_data_t::find( 50288, false ); // Starfall probably doesn't take 30 seconds to hit the target.
+  assert( s -> _prj_speed == 0.8 && "Check the speed on Starfall" );
+  s -> _prj_speed = 20;
   if ( SC_USE_PTR )
   {
-    s = spell_data_t::find( 164812, true );
-    s -> _duration = 20000;
+    s = spell_data_t::find( 50288, true );
+    s -> _prj_speed = 20;
   }
-  s = spell_data_t::find( 164815, false );
-  s -> _duration = 20000;
-  if ( SC_USE_PTR )
-  {
-    s = spell_data_t::find( 164815, true );
-    s -> _duration = 20000;
-  }
-  s = spell_data_t::find( 152221, false );
-  s -> _duration = 20000;
-  s -> _prj_speed = 0;
-  if ( SC_USE_PTR )
-  {
-    s = spell_data_t::find( 152221, true );
-    s -> _duration = 20000;
-    s -> _prj_speed = 0;
-  }
+
+
   // Death Knight
 
   // Misc
@@ -1118,6 +1104,12 @@ double dbc_t::regen_base( player_e t, unsigned level ) const
 double dbc_t::regen_base( pet_e t, unsigned level ) const
 {
   return regen_base( util::pet_class_type( t ), level );
+}
+
+int dbc_t::resolve_item_scaling( unsigned level ) const
+{
+  assert( level > 0 && level <= MAX_LEVEL );
+  return __gt_item_scaling[ level - 1 ];
 }
 
 double dbc_t::health_base( player_e t, unsigned level ) const

@@ -1212,7 +1212,33 @@ void print_html_stats ( report::sc_html_stream& os, player_t* a )
       100 * buffed_stats.readiness,
       100 * a -> composite_readiness(),
       a -> initial.stats.readiness_rating );
+    os.printf(
+      "\t\t\t\t\t\t\t\t\t<tr%s>\n"
+      "\t\t\t\t\t\t\t\t\t\t<th class=\"left\">Damage / Heal Versatility</th>\n"
+      "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.2f%%</td>\n"
+      "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.2f%%</td>\n"
+      "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.0f</td>\n"
+      "\t\t\t\t\t\t\t\t\t</tr>\n",
+      ( j % 2 == 1 ) ? " class=\"odd\"" : "",
+      100 * buffed_stats.damage_versatility,
+      100 * a -> composite_damage_versatility(),
+      a -> initial.stats.versatility_rating );
     j++;
+    if ( a -> role == ROLE_TANK )
+    {
+      os.printf(
+        "\t\t\t\t\t\t\t\t\t<tr%s>\n"
+        "\t\t\t\t\t\t\t\t\t\t<th class=\"left\">Mitigation Versatility</th>\n"
+        "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.2f%%</td>\n"
+        "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.2f%%</td>\n"
+        "\t\t\t\t\t\t\t\t\t\t<td class=\"right\">%.0f</td>\n"
+        "\t\t\t\t\t\t\t\t\t</tr>\n",
+        ( j % 2 == 1 ) ? " class=\"odd\"" : "",
+        100 * buffed_stats.mitigation_versatility,
+        100 * a -> composite_mitigation_versatility(),
+        a -> initial.stats.versatility_rating );
+      j++;
+    }
     if ( buffed_stats.manareg_per_second > 0 )
     {
       os.printf(
@@ -2319,10 +2345,10 @@ void print_html_player_charts( report::sc_html_stream& os, sim_t* sim, player_t*
     os.printf( fmt, ri.timeline_dps_chart.c_str() );
   }
 
-  std::string vengeance_timeline_chart = chart::timeline( p, p -> vengeance_timeline().data(), "vengeance", 0, "ff0000", static_cast<size_t>( p -> collected_data.fight_length.max() ) );
-  if ( ! vengeance_timeline_chart.empty() )
+  std::string resolve_timeline_chart = chart::timeline( p, p -> resolve_timeline.data(), "resolve", 0, "ff0000", static_cast<size_t>( p -> collected_data.fight_length.max() ) );
+  if ( ! resolve_timeline_chart.empty() )
   {
-    os << "<img src=\"" << vengeance_timeline_chart << "\" alt=\"Vengeance Timeline Chart\" />\n";
+    os << "<img src=\"" << resolve_timeline_chart << "\" alt=\"Resolve Timeline Chart\" />\n";
   }
 
   if ( ! ri.distribution_dps_chart.empty() )

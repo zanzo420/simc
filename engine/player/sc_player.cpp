@@ -109,7 +109,7 @@ bool parse_talent_url( sim_t* sim,
   {
     bool all_digits = true;
     for ( size_t i = 0; i < url.size() && all_digits; i++ )
-      if ( ! isdigit( url[ i ] ) )
+      if ( ! std::isdigit( url[ i ] ) )
         all_digits = false;
 
     if ( all_digits )
@@ -407,6 +407,7 @@ player_t::player_t( sim_t*             s,
   type( t ),
 
   index( -1 ),
+  actor_spawn_index( -1 ),
 
   // (static) attributes
   race( r ),
@@ -428,7 +429,8 @@ player_t::player_t( sim_t*             s,
   timeofday( NIGHT_TIME ), //Set to Night by Default, user can override.
   gcd_ready( timespan_t::zero() ), base_gcd( timespan_t::from_seconds( 1.5 ) ), started_waiting( timespan_t::min() ),
   pet_list(), active_pets(),
-  vengeance_list( this ),invert_scaling( 0 ),
+  resolve_manager( *this ),
+  invert_scaling( 0 ),
   // Reaction
   reaction_offset( timespan_t::from_seconds( 0.1 ) ), reaction_mean( timespan_t::from_seconds( 0.3 ) ), reaction_stddev( timespan_t::zero() ), reaction_nu( timespan_t::from_seconds( 0.25 ) ),
   // Latency
@@ -455,7 +457,7 @@ player_t::player_t( sim_t*             s,
   flask( FLASK_NONE ),
   food( FOOD_NONE ),
   // Events
-  executing( 0 ), channeling( 0 ), readying( 0 ), off_gcd( 0 ), in_combat( false ), action_queued( false ),
+  executing( 0 ), channeling( 0 ), strict_sequence( 0 ), readying( 0 ), off_gcd( 0 ), in_combat( false ), action_queued( false ),
   last_foreground_action( 0 ),
   cast_delay_reaction( timespan_t::zero() ), cast_delay_occurred( timespan_t::zero() ),
   // Actions
@@ -471,7 +473,7 @@ player_t::player_t( sim_t*             s,
 
   tmi_window( 6.0 ),
   collected_data( player_collected_data_t( name_str, *sim ) ),
-  vengeance( collected_data.vengeance_timeline ),
+  resolve_timeline( collected_data.resolve_timeline ),
   // Damage
   iteration_dmg( 0 ), iteration_dmg_taken( 0 ),
   dpr( 0 ),
@@ -484,6 +486,7 @@ player_t::player_t( sim_t*             s,
   report_information( player_processed_report_information_t() ),
   // Gear
   sets( this ),
+  new_sets( this ),
   meta_gem( META_GEM_NONE ), matching_gear( false ),
   item_cooldown( cooldown_t( "item_cd", *this ) ),
   legendary_tank_cloak_cd( nullptr ),
@@ -1007,6 +1010,7 @@ bool player_t::init_items()
   }
 
   sets.init( *this );
+  new_sets.init();
 
   // these initialize the weapons, but don't have a return value (yet?)
   init_weapon( main_hand_weapon );
@@ -1645,7 +1649,6 @@ void player_t::init_gains()
   gains.essence_of_the_red     = get_gain( "essence_of_the_red" );
   gains.focus_regen            = get_gain( "focus_regen" );
   gains.health                 = get_gain( "external_healing" );
-  gains.innervate              = get_gain( "innervate" );
   gains.mana_potion            = get_gain( "mana_potion" );
   gains.mana_spring_totem      = get_gain( "mana_spring_totem" );
   gains.mp5_regen              = get_gain( "mp5_regen" );
@@ -1758,6 +1761,7 @@ void player_t::init_scaling()
     scales_with[ STAT_MASTERY_RATING            ] = true;
     scales_with[ STAT_MULTISTRIKE_RATING        ] = true;
     scales_with[ STAT_READINESS_RATING          ] = true;
+    scales_with[ STAT_VERSATILITY_RATING        ] = true;
 
     scales_with[ STAT_WEAPON_DPS   ] = attack;
     scales_with[ STAT_WEAPON_SPEED ] = sim -> weapon_speed_scale_factors ? attack : false;
@@ -1808,6 +1812,10 @@ void player_t::init_scaling()
 
         case STAT_READINESS_RATING:
           initial.stats.readiness_rating += v;
+          break;
+
+        case STAT_VERSATILITY_RATING:
+          initial.stats.versatility_rating += v;
           break;
 
         case STAT_WEAPON_DPS:
@@ -2086,12 +2094,12 @@ void player_t::create_buffs()
       // Legendary meta haste buff
       buffs.tempus_repit              = buff_creator_t( this, "tempus_repit", find_spell( 137590 ) ).add_invalidate( CACHE_HASTE ).activated( false );
 
-      // Vengeance
-      buffs.vengeance = buff_creator_t( this, "vengeance" )
+      // Resolve
+      buffs.resolve = buff_creator_t( this, "resolve" )
                         .max_stack( 1 )
-                        .duration( timespan_t::from_seconds( 20.0 ) )
+                        .duration( timespan_t::zero() )
                         .default_value( 0 )
-                        .add_invalidate( CACHE_ATTACK_POWER );
+                        .add_invalidate( CACHE_PLAYER_HEAL_MULTIPLIER );
 
       // Potions
       struct potion_buff_creator : public stat_buff_creator_t
@@ -2167,11 +2175,6 @@ void player_t::create_buffs()
   debuffs.flying       = buff_creator_t( this, "flying" ).max_stack( 1 );
 
   // stuff moved from old init_debuffs method
-  debuffs.magic_vulnerability     = buff_creator_t( this, "magic_vulnerability", find_spell( 104225 ) )
-                                    .default_value( find_spell( 104225 ) -> effectN( 1 ).percent() );
-
-  debuffs.physical_vulnerability  = buff_creator_t( this, "physical_vulnerability", find_spell( 81326 ) )
-                                    .default_value( find_spell( 81326 ) -> effectN( 1 ).percent() );
 
   debuffs.mortal_wounds           = buff_creator_t( this, "mortal_wounds", find_spell( 115804 ) )
                                     .default_value( std::fabs( find_spell( 115804 ) -> effectN( 1 ).percent() ) );
@@ -2296,7 +2299,6 @@ double player_t::composite_melee_crit() const
   if ( ! is_pet() && ! is_enemy() && ! is_add() && sim -> auras.critical_strike -> check() )
     ac += sim -> auras.critical_strike -> value();
 
-
     ac += racials.viciousness -> effectN( 1 ).percent();
     ac += racials.arcane_acuity -> effectN( 1 ).percent();
 
@@ -2306,7 +2308,7 @@ double player_t::composite_melee_crit() const
   return ac;
 }
 
-// player_t::composite_attack_expertise =====================================
+// player_t::composite_melee_expertise =====================================
 
 double player_t::composite_melee_expertise( weapon_t* ) const
 {
@@ -2495,7 +2497,6 @@ double player_t::composite_spell_haste() const
     if ( sim -> auras.haste -> check() )
       h *= 1.0 / ( 1.0 + sim -> auras.haste -> value() );
 
-
     h *= 1.0 / ( 1.0 + racials.nimble_fingers -> effectN( 1 ).percent() );
     h *= 1.0 / ( 1.0 + racials.time_is_money -> effectN( 1 ).percent() );
 
@@ -2588,28 +2589,63 @@ double player_t::composite_mastery() const
 // player_t::composite_multistrike ==========================================
 
 double player_t::composite_multistrike() const
-{
-  double ms = composite_multistrike_rating() / current.rating.multistrike;
+{    
+  double cm = composite_multistrike_rating() / current.rating.multistrike;
 
-  return ms;
+  if ( ! is_pet() && ! is_enemy() && sim -> auras.multistrike -> check() )
+    cm *= 1.0 + sim -> auras.multistrike -> value();
+
+  return cm;
 }
 
 // player_t::composite_readiness ============================================
 
 double player_t::composite_readiness() const
 {
-  double rd = composite_readiness_rating() / current.rating.readiness;
-
-  return rd;
+  return composite_readiness_rating() / current.rating.readiness;
 }
 
 // player_t::composite_bonus_armor =========================================
 
 double player_t::composite_bonus_armor() const
 {
-  double ba = current.stats.bonus_armor;
+  return current.stats.bonus_armor;
+}
 
-  return ba;
+// player_t::composite_damage_versatility ===================================
+
+double player_t::composite_damage_versatility() const
+{
+  double cdv = composite_damage_versatility_rating() / current.rating.damage_versatility;
+
+  if ( ! is_pet() && ! is_enemy() && sim -> auras.versatility -> check() )
+    cdv += sim -> auras.versatility -> value();
+
+  return cdv;
+}
+
+// player_t::composite_heal_versatility ====================================
+
+double player_t::composite_heal_versatility() const
+{
+  double chv = composite_heal_versatility_rating() / current.rating.heal_versatility;
+
+  if ( ! is_pet() && ! is_enemy() && sim -> auras.versatility -> check() )
+    chv += sim -> auras.versatility -> value();
+
+  return chv;
+}
+
+// player_t::composite_mitigation_versatility ===============================
+
+double player_t::composite_mitigation_versatility() const
+{
+  double cmv = composite_mitigation_versatility_rating() / current.rating.mitigation_versatility;
+
+  if ( ! is_pet() && ! is_enemy() && sim -> auras.versatility -> check() )
+    cmv += sim -> auras.versatility -> value();
+
+  return cmv;
 }
 
 // player_t::composite_player_multiplier ====================================
@@ -2630,7 +2666,7 @@ double player_t::composite_player_td_multiplier( school_e /* school */,  const a
 
 // player_t::composite_player_heal_multiplier ===============================
 
-double player_t::composite_player_heal_multiplier( school_e /* school */ ) const
+double player_t::composite_player_heal_multiplier( const action_state_t* ) const
 {
   return 1.0;
 }
@@ -2644,7 +2680,7 @@ double player_t::composite_player_th_multiplier( school_e /* school */ ) const
 
 // player_t::composite_player_absorb_multiplier =============================
 
-double player_t::composite_player_absorb_multiplier( school_e /* school */ ) const
+double player_t::composite_player_absorb_multiplier( const action_state_t* ) const
 {
   return 1.0;
 }
@@ -2753,16 +2789,16 @@ double player_t::composite_attribute( attribute_e attr ) const
   switch ( attr )
   {
     case ATTR_INTELLECT:
-        a += racials.heroic_presence -> effectN( 3 ).base_value();
+        a += racials.heroic_presence -> effectN( 3 ).average( this );
       break;
     case ATTR_STRENGTH:
-        a += racials.heroic_presence -> effectN( 1 ).base_value();
+        a += racials.heroic_presence -> effectN( 1 ).average( this );
       break;
     case ATTR_AGILITY:
-        a += racials.heroic_presence -> effectN( 2 ).base_value();
+        a += racials.heroic_presence -> effectN( 2 ).average( this );
       break;
     case ATTR_STAMINA:
-        a += racials.endurance -> effectN( 1 ).base_value();
+        a += racials.endurance -> effectN( 1 ).average( this );
       break;
     default:
       break;
@@ -2834,6 +2870,10 @@ double player_t::composite_rating( rating_e rating ) const
       if ( ! is_pet() && ! is_enemy() && sim -> auras.mastery -> check() )
         v += sim -> auras.mastery -> value();
       break;
+    case RATING_DAMAGE_VERSATILITY:
+    case RATING_HEAL_VERSATILITY:
+    case RATING_MITIGATION_VERSATILITY:
+      v = current.stats.versatility_rating; break;
     case RATING_EXPERTISE:
       v = current.stats.expertise_rating; break;
     case RATING_DODGE:
@@ -2857,13 +2897,6 @@ double player_t::composite_rating( rating_e rating ) const
 double player_t::composite_player_vulnerability( school_e school ) const
 {
   double m = 1.0;
-
-  if ( debuffs.magic_vulnerability -> check() &&
-       school != SCHOOL_NONE && school != SCHOOL_PHYSICAL )
-    m *= 1.0 + debuffs.magic_vulnerability -> value();
-  else if ( debuffs.physical_vulnerability -> check() &&
-            ( school == SCHOOL_PHYSICAL ) )
-    m *= 1.0 + debuffs.physical_vulnerability -> value();
 
   if ( debuffs.vulnerable -> check() )
     m *= 1.0 + debuffs.vulnerable -> value();
@@ -2944,6 +2977,11 @@ void player_t::invalidate_cache( cache_e c )
     case CACHE_SPEED:
       invalidate_cache( CACHE_ATTACK_SPEED );
       invalidate_cache( CACHE_SPELL_SPEED  );
+      break;
+    case CACHE_VERSATILITY:
+      invalidate_cache( CACHE_DAMAGE_VERSATILITY );
+      invalidate_cache( CACHE_HEAL_VERSATILITY );
+      invalidate_cache( CACHE_MITIGATION_VERSATILITY );
       break;
     default:
       cache.invalidate( c );
@@ -3352,8 +3390,8 @@ void player_t::merge( player_t& other )
     }
   }
 
-  // Vengeance Timeline
-  vengeance.merge( other.vengeance );
+  // Resolve Timeline
+  resolve_timeline.merge( other.resolve_timeline );
 
   // Action Map
   for ( size_t i = 0; i < other.action_list.size(); ++i )
@@ -3584,8 +3622,11 @@ void player_t::arise()
   if ( current.sleeping )
     return;
 
+  actor_spawn_index = sim -> global_spawn_index++;
+
   if ( sim -> log )
-    sim -> out_log.printf( "%s arises.", name() );
+    sim -> out_log.printf( "%s arises. Spawn Index=", name(), actor_spawn_index );
+
 
   init_resources( true );
 
@@ -3622,7 +3663,9 @@ void player_t::demise()
     return;
 
   if ( sim -> log )
-    sim -> out_log.printf( "%s demises.", name() );
+    sim -> out_log.printf( "%s demises.. Spawn Index=", name(), actor_spawn_index );
+
+  actor_spawn_index = -1;
 
   assert( arise_time >= timespan_t::zero() );
   iteration_fight_length += sim -> current_time - arise_time;
@@ -3649,8 +3692,8 @@ void player_t::demise()
 
   core_event_t::cancel( off_gcd );
 
-  // stops vengeance and clear vengeance_list
-  vengeance_stop();
+  // stops resolve and clear resolve_source_list
+  resolve_manager.stop();
 
   for ( size_t i = 0; i < buff_list.size(); ++i )
   {
@@ -3670,6 +3713,11 @@ void player_t::demise()
 
   for ( size_t i = 0; i < dot_list.size(); ++i )
     dot_list[ i ] -> cancel();
+
+  for( size_t i = 0; i < callbacks_on_demise.size(); ++i )
+  {
+    callbacks_on_demise[ i ]();
+  }
 }
 
 // player_t::interrupt ======================================================
@@ -4107,6 +4155,7 @@ void player_t::stat_gain( stat_e    stat,
     case STAT_MASTERY_RATING:
     case STAT_MULTISTRIKE_RATING:
     case STAT_READINESS_RATING:
+    case STAT_VERSATILITY_RATING:
       current.stats.add_stat( stat, amount );
       temporary.add_stat( stat, temp_value * amount );
       invalidate_cache( cache_from_stat( stat ) );
@@ -4167,6 +4216,11 @@ void player_t::stat_gain( stat_e    stat,
                        ( stat == STAT_MAX_ENERGY ) ? RESOURCE_ENERGY :
                        ( stat == STAT_MAX_FOCUS  ) ? RESOURCE_FOCUS  : RESOURCE_RUNIC_POWER );
       resources.max[ r ] += amount;
+      // Stuff temporary max health gains into temporary.resource[ RESOURCE_HEALTH ] since temporary lacks a STAT_MAX_HEALTH field
+      // A bit of a kludge; if we ever use temporary.resource[ RESOURCE_HEALTH ] for something else, we'll have to tweak this, either
+      // by adding a temporary.resource_max[] array of doubles or a temporary.max_health double.
+      if ( r == RESOURCE_HEALTH )
+        temporary.resource[ r ] += temp_value * amount;
       resource_gain( r, amount, gain, action );
     }
     break;
@@ -4229,6 +4283,7 @@ void player_t::stat_loss( stat_e    stat,
     case STAT_MASTERY_RATING:
     case STAT_MULTISTRIKE_RATING:
     case STAT_READINESS_RATING:
+    case STAT_VERSATILITY_RATING:
       current.stats.add_stat( stat, -amount );
       temporary.add_stat( stat, temp_value * -amount );
       invalidate_cache( cache_from_stat( stat ) );
@@ -4274,6 +4329,10 @@ void player_t::stat_loss( stat_e    stat,
       recalculate_resource_max( r );
       double delta = resources.current[ r ] - resources.max[ r ];
       if ( delta > 0 ) resource_loss( r, delta, gain, action );
+
+      // See equivalent part of player_t::stat_gain for comment on this kludge
+      if ( r == RESOURCE_HEALTH )
+        temporary.resource[ r ] -= temp_value * amount;
     }
     break;
 
@@ -4705,6 +4764,9 @@ void player_t::target_mitigation( school_e school,
       s -> result_amount *= 1.0 + buffs.devotion_aura -> data().effectN( 1 ).percent();
     }
   }
+
+  // TODO-WOD: Where should this be? Or does it matter?
+  s -> result_amount *= 1.0 - cache.mitigation_versatility();
   
   if ( school == SCHOOL_PHYSICAL && dmg_type == DMG_DIRECT )
   {
@@ -4750,7 +4812,8 @@ void player_t::assess_heal( school_e, dmg_e, action_state_t* s )
 {
   if ( buffs.guardian_spirit -> up() )
     s -> result_amount *= 1.0 + buffs.guardian_spirit -> data().effectN( 1 ).percent();
-
+  
+  // process heal
   s -> result_amount = resource_gain( RESOURCE_HEALTH, s -> result_amount, 0, s -> action );
 
   // if the target is a tank record this event on damage timeline
@@ -4768,6 +4831,7 @@ void player_t::assess_heal( school_e, dmg_e, action_state_t* s )
       collected_data.health_changes_tmi.timeline_normalized.add( sim -> current_time, - ( s -> result_total ) / resources.max[ RESOURCE_HEALTH ] );
     }    
   }
+
   // store iteration heal taken
   iteration_heal_taken += s -> result_amount;
 }
@@ -5412,6 +5476,9 @@ struct snapshot_stats_t : public action_t
     buffed_stats.multistrike = p -> cache.multistrike();
     buffed_stats.readiness = p -> cache.readiness();
     buffed_stats.bonus_armor = p -> composite_bonus_armor();
+    buffed_stats.damage_versatility = p -> cache.damage_versatility();
+    buffed_stats.heal_versatility = p -> cache.heal_versatility();
+    buffed_stats.mitigation_versatility = p -> cache.mitigation_versatility();
 
     buffed_stats.spell_power  = util::round( p -> cache.spell_power( SCHOOL_MAX ) * p -> composite_spell_power_multiplier() );
     buffed_stats.spell_hit    = p -> cache.spell_hit();
@@ -7191,6 +7258,7 @@ expr_t* player_t::create_expression( action_t* a,
       case STAT_CRIT_RATING:      return make_ref_expr( name_str, temporary.crit_rating );
       case STAT_HASTE_RATING:     return make_ref_expr( name_str, temporary.haste_rating );
       case STAT_READINESS_RATING: return make_ref_expr( name_str, temporary.readiness_rating );
+      case STAT_VERSATILITY_RATING: return make_ref_expr( name_str, temporary.versatility_rating );
       case STAT_MULTISTRIKE_RATING:return make_ref_expr( name_str, temporary.multistrike_rating );
       case STAT_ARMOR:            return make_ref_expr( name_str, temporary.armor );
       case STAT_BONUS_ARMOR:      return make_ref_expr( name_str, temporary.bonus_armor );
@@ -7941,6 +8009,9 @@ bool player_t::create_profile( std::string& profile_str, save_e stype, bool save
     if ( enchant.readiness_rating            != 0 )  profile_str += "enchant_readiness_rating="
          + util::to_string( enchant.readiness_rating ) + term;
 
+    if ( enchant.versatility_rating            != 0 )  profile_str += "enchant_versatility_rating="
+         + util::to_string( enchant.versatility_rating ) + term;
+
     if ( enchant.multistrike_rating          != 0 )  profile_str += "enchant_multistrike_rating="
          + util::to_string( enchant.multistrike_rating ) + term;
 
@@ -8111,6 +8182,14 @@ void player_t::create_options()
     opt_bool( "tier16_4pc_tank",   sets.count[ SET_T16_4PC_TANK ] ),
     opt_bool( "tier16_2pc_heal",   sets.count[ SET_T16_2PC_HEAL ] ),
     opt_bool( "tier16_4pc_heal",   sets.count[ SET_T16_4PC_HEAL ] ),
+    opt_bool( "tier17_2pc_caster", sets.count[ SET_T17_2PC_CASTER ] ),
+    opt_bool( "tier17_4pc_caster", sets.count[ SET_T17_4PC_CASTER ] ),
+    opt_bool( "tier17_2pc_melee",  sets.count[ SET_T17_2PC_MELEE ] ),
+    opt_bool( "tier17_4pc_melee",  sets.count[ SET_T17_4PC_MELEE ] ),
+    opt_bool( "tier17_2pc_tank",   sets.count[ SET_T17_2PC_TANK ] ),
+    opt_bool( "tier17_4pc_tank",   sets.count[ SET_T17_4PC_TANK ] ),
+    opt_bool( "tier17_2pc_heal",   sets.count[ SET_T17_2PC_HEAL ] ),
+    opt_bool( "tier17_4pc_heal",   sets.count[ SET_T17_4PC_HEAL ] ),
     opt_bool( "pvp_2pc_caster",    sets.count[ SET_PVP_2PC_CASTER ] ),
     opt_bool( "pvp_4pc_caster",    sets.count[ SET_PVP_4PC_CASTER ] ),
     opt_bool( "pvp_2pc_melee",     sets.count[ SET_PVP_2PC_MELEE ] ),
@@ -8144,6 +8223,7 @@ void player_t::create_options()
     opt_float( "gear_mastery_rating",   gear.mastery_rating ),
     opt_float( "gear_multistrike_rating", gear.multistrike_rating ),
     opt_float( "gear_readiness_rating", gear.readiness_rating ),
+    opt_float( "gear_versatility_rating", gear.versatility_rating ),
     opt_float( "gear_bonus_armor",      gear.bonus_armor ),
 
     // Stat Enchants
@@ -8162,6 +8242,7 @@ void player_t::create_options()
     opt_float( "enchant_mastery_rating",   enchant.mastery_rating ),
     opt_float( "enchant_multistrike_rating", enchant.multistrike_rating ),
     opt_float( "enchant_readiness_rating", enchant.readiness_rating ),
+    opt_float( "enchant_versatility_rating", enchant.versatility_rating ),
     opt_float( "enchant_bonus_armor",      enchant.bonus_armor ),
     opt_float( "enchant_health",           enchant.resource[ RESOURCE_HEALTH ] ),
     opt_float( "enchant_mana",             enchant.resource[ RESOURCE_MANA   ] ),
@@ -8344,8 +8425,8 @@ void player_t::analyze( sim_t& s )
   if ( !  quiet && (  is_enemy() ||  is_add() ) && ! (  is_pet() && s.report_pets_separately ) )
     s.targets_by_name.push_back( this );
 
-  // Vengeance Timeline
-  vengeance.adjust( s.divisor_timeline );
+  // Resolve Timeline
+  resolve_timeline.adjust( s.divisor_timeline );
 
   // Resources & Gains ======================================================
 
@@ -9150,6 +9231,18 @@ double player_stat_cache_t::armor() const
   return _armor;
 }
 
+double player_stat_cache_t::mastery() const
+{
+  if ( ! active || ! valid[ CACHE_MASTERY ] )
+  {
+    valid[ CACHE_MASTERY ] = true;
+    _mastery = player -> composite_mastery();
+    _mastery_value = player -> composite_mastery_value();
+  }
+  else assert( _mastery == player -> composite_mastery() );
+  return _mastery;
+}
+
 /* This is composite_mastery * specialization_mastery_coefficient !
  *
  * If you need the pure mastery value, use player_t::composite_mastery
@@ -9159,6 +9252,7 @@ double player_stat_cache_t::mastery_value() const
   if ( ! active || ! valid[ CACHE_MASTERY ] )
   {
     valid[ CACHE_MASTERY ] = true;
+    _mastery = player -> composite_mastery();
     _mastery_value = player -> composite_mastery_value();
   }
   else assert( _mastery_value == player -> composite_mastery_value() );
@@ -9198,6 +9292,39 @@ double player_stat_cache_t::bonus_armor() const
   return _bonus_armor;
 }
 
+double player_stat_cache_t::damage_versatility() const
+{
+  if ( ! active || ! valid[ CACHE_DAMAGE_VERSATILITY ] )
+  {
+    valid[ CACHE_DAMAGE_VERSATILITY ] = true;
+    _damage_versatility = player -> composite_damage_versatility();
+  }
+  else assert( _damage_versatility == player -> composite_damage_versatility() );
+  return _damage_versatility;
+}
+
+double player_stat_cache_t::heal_versatility() const
+{
+  if ( ! active || ! valid[ CACHE_HEAL_VERSATILITY ] )
+  {
+    valid[ CACHE_HEAL_VERSATILITY ] = true;
+    _heal_versatility = player -> composite_heal_versatility();
+  }
+  else assert( _heal_versatility == player -> composite_heal_versatility() );
+  return _heal_versatility;
+}
+
+double player_stat_cache_t::mitigation_versatility() const
+{
+  if ( ! active || ! valid[ CACHE_MITIGATION_VERSATILITY ] )
+  {
+    valid[ CACHE_MITIGATION_VERSATILITY ] = true;
+    _mitigation_versatility = player -> composite_mitigation_versatility();
+  }
+  else assert( _mitigation_versatility == player -> composite_mitigation_versatility() );
+  return _mitigation_versatility;
+}
+
 // player_stat_cache_t::mastery =============================================
 
 double player_stat_cache_t::player_multiplier( school_e s ) const
@@ -9213,58 +9340,20 @@ double player_stat_cache_t::player_multiplier( school_e s ) const
 
 // player_stat_cache_t::mastery =============================================
 
-double player_stat_cache_t::player_heal_multiplier( school_e s ) const
+double player_stat_cache_t::player_heal_multiplier( const action_state_t* s ) const
 {
-  if ( ! active || ! player_heal_mult_valid[ s ] )
+  school_e sch = s -> action -> get_school();
+
+  if ( ! active || ! player_heal_mult_valid[ sch ] )
   {
-    player_heal_mult_valid[ s ] = true;
-    _player_heal_mult[ s ] = player -> composite_player_heal_multiplier( s );
+    player_heal_mult_valid[ sch ] = true;
+    _player_heal_mult[ sch ] = player -> composite_player_heal_multiplier( s );
   }
-  else assert( _player_heal_mult[ s ] == player -> composite_player_heal_multiplier( s ) );
-  return _player_heal_mult[ s ];
+  else assert( _player_heal_mult[ sch ] == player -> composite_player_heal_multiplier( s ) );
+  return _player_heal_mult[ sch ];
 }
 
 #endif
-
-/* Start Vengeance
- *
- * Call in combat_begin() when it is active during the whole fight,
- * otherwise in a action/buff ( like Druid Bear Form )
- */
-
-void player_vengeance_timeline_t::start( player_t& p )
-{
-  assert( ! is_started() );
-
-  struct collect_event_t : public event_t
-  {
-    player_vengeance_timeline_t& vengeance;
-    collect_event_t( player_t& p, player_vengeance_timeline_t& v ) :
-      event_t( p, "vengeance_timeline_collect_event_t" ),
-      vengeance( v )
-    {
-      sim().add_event( this, timespan_t::from_seconds( 1 ) );
-    }
-
-    virtual void execute()
-    {
-      assert( vengeance.event == this );
-      vengeance.timeline_.add( sim().current_time, p() -> buffs.vengeance -> value() );
-      vengeance.event = new ( sim() ) collect_event_t( *p(), vengeance );
-    }
-  };
-
-  event = new ( *p.sim ) collect_event_t( p, *this ); // start timeline
-}
-
-/* Stop Vengeance
- *
- * Is automatically called in player_t::demise()
- * If you have dynamic vengeance activation ( like Druid Bear Form ), call it in the buff expiration/etc.
- */
-
-void player_vengeance_timeline_t::stop()
-{ core_event_t::cancel( event ); }
 
 player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const action_t* a, const player_t* t, const timespan_t& ts, const player_t* p ) :
   action( a ), target( t ), time( ts )
@@ -9674,3 +9763,286 @@ std::string player_talent_points_t::to_string() const
 
   return ss.str();
 }
+
+namespace resolve {
+
+// Resolve Event List =====================================================
+// This is the list of the damage events that have occurred. Used every time Resolve is updated
+
+struct manager_t::damage_event_list_t
+{
+  damage_event_list_t( const player_t* p ) :
+    event_list(),
+    myself( p )
+  { }
+
+  // called after each iteration in player_t::resolve_stop()
+  void reset()
+  { event_list.clear(); }
+
+  /* Add a damage event to the Resolve Damage Event list
+   */
+  void add( const player_t* actor, double amount, timespan_t current_time )
+  {
+    // don't count friendly fire
+    if ( actor == myself )
+      return;
+
+    assert( actor -> actor_spawn_index >= 0 && "Trying to register resolve damage event from a dead player! Something is seriously broken in player_t::arise/demise." );
+
+    // Add a new entry
+    event_entry_t e;
+    e.actor_spawn_index = actor -> actor_spawn_index;
+    e.event_amount = amount;
+    e.event_time = current_time;
+
+    event_list.push_back( e );
+  }
+
+  // structure that contains the relevant information for each actor entry in the list
+  struct event_entry_t {
+    int actor_spawn_index;
+    double event_amount;
+    timespan_t event_time;
+
+  };
+  typedef std::vector<event_entry_t> list_t;
+  list_t event_list; // vector of actor entries
+  const player_t* myself; // not sure this is strictly necessary, intended to nullify self-veng, but an is_enemy(actor) call might be better
+};
+
+// Resolve Diminishing Returns List =====================================================
+// this is the sorted list of actors used to determine Resolve diminishing returns.
+// sorted according to auto-attack DPS
+
+struct manager_t::diminishing_returns_list_t
+{
+  diminishing_returns_list_t( const player_t* p ) :
+    myself( p )
+  { }
+
+  /* Reset the diminishing return list
+   */
+  void reset()
+  { actor_list.clear(); }
+
+  /* Get the Diminishing Return Divisor for a actor ( given his actor_spawn_index )
+   * pre-condition: actor_list sorted by raw dps
+   */
+  int get_diminishing_return_factor( int actor_spawn_index )
+  {
+
+    std::vector<actor_entry_t>::iterator found = find_actor( actor_spawn_index );
+    assert( found != actor_list.end() && "Resolve attacker not found in resolve list!" );
+    return as<int>(std::distance( actor_list.begin(), found ) + 1);
+  }
+
+  /* Add average auto-attack dps values to the Diminishing Return list
+   */
+  void add( const player_t* actor, double raw_dps, timespan_t current_time )
+  {
+    if ( actor == myself )
+      return;
+
+    std::vector<actor_entry_t>::iterator found = find_actor( actor -> actor_spawn_index );
+
+    if ( found != actor_list.end() )
+    {
+      // We already have the actor in the list, update:
+      update_actor_entry( *found, raw_dps, current_time );
+    }
+    else
+    {
+      // We do not have the actor in the list, create new entry:
+      actor_entry_t a;
+      a.actor_spawn_index = actor -> actor_spawn_index;
+      a.raw_dps = raw_dps;
+      a.last_attack = current_time;
+
+      actor_list.push_back( a );
+    }
+  }
+
+  /* Update the Diminishing Return list by purging old entries and sorting it by DPS
+   */
+  void update_list( timespan_t current_time )
+  {
+    // Purge any actors that haven't hit you in 10 seconds or more
+    actor_list.erase( std::remove_if( actor_list.begin(), actor_list.end(), was_inactive( current_time ) ), actor_list.end() );
+
+    // Sort the list by DPS
+    std::sort( actor_list.begin(), actor_list.end(), compare_DPS );
+  }
+private:
+  // structure that contains the relevant information for each actor entry in the list
+  struct actor_entry_t {
+    int actor_spawn_index;
+    double raw_dps;
+    timespan_t last_attack;
+  };
+  std::vector<actor_entry_t> actor_list; // vector of actor entries
+  const player_t* myself; // not sure this is strictly necessary, intended to nullify self-veng, but an is_enemy(actor) call might be better
+
+  // comparator function for sorting the list
+  static bool compare_DPS( const actor_entry_t &a, const actor_entry_t &b )
+  { return a.raw_dps > b.raw_dps; }
+
+  // comparator functor for purging inactive players
+  struct was_inactive {
+    was_inactive( const timespan_t& current_time ) :
+      current_time( current_time )
+    {}
+    bool operator()( const actor_entry_t& a ) const
+    { return a.last_attack + timespan_t::from_seconds( 10.0 ) < current_time; } // true if last attack is not more than 10 seconds ago
+    const timespan_t& current_time;
+  };
+
+  std::vector<actor_entry_t>::iterator find_actor( int actor_spawn_index )
+  {
+    std::vector<actor_entry_t>::iterator iter = actor_list.begin();
+    for ( ; iter != actor_list.end(); iter++ )
+    {
+      if ( ( *iter ).actor_spawn_index == actor_spawn_index )
+        return iter;
+    }
+    return iter;
+  }
+
+  // update_actor_entry
+  void update_actor_entry( actor_entry_t& a, double raw_dps, timespan_t last_attack )
+  {
+      a.raw_dps = raw_dps;
+      a.last_attack = last_attack;
+  }
+};
+
+struct manager_t::update_event_t final : public event_t
+{
+  update_event_t( player_t& p ) :
+    event_t( p, "resolve_update_event_t" )
+  {
+    sim().add_event( this, timespan_t::from_seconds( 1.0 ) ); // this is the automatic resolve update interval
+  }
+
+  virtual void execute() override
+  {
+    assert( p() -> resolve_manager._update_event == this );
+    p() -> resolve_manager.update(); // update resolve
+    p() -> resolve_manager._update_event = new ( sim() ) update_event_t( *p() ); // schedule next update/add
+  }
+};
+
+manager_t::manager_t( player_t& p ) :
+    _player( p ),
+    _update_event( nullptr ),
+    _started( false ),
+    _diminishing_return_list( new diminishing_returns_list_t( &p ) ),
+    _damage_list( new damage_event_list_t( &p ) )
+{
+
+}
+
+/* Start Resolve
+ */
+void manager_t::start()
+{
+  assert( !_started && "Trying to start a already started Resolve Manager." );
+
+  _diminishing_return_list -> reset();
+  _damage_list -> reset();
+
+  _started = true;
+
+  // Make sure we get the buff up right now, to activate the stamina part.
+  update();
+
+  // Start periodic update event
+  _update_event = new (*_player.sim) update_event_t( _player );
+
+}
+
+/* Stop Resolve
+ */
+void manager_t::stop()
+{
+  if ( !_started )
+    return;
+
+  _diminishing_return_list -> reset();
+  _damage_list -> reset();
+
+  _started = false;
+}
+
+/* Recalculate the resolve value
+ */
+void manager_t::update()
+{
+  assert( _started && "Trying to update Resolve for a unstarted Resolve Manager." );
+
+  // Relevant constants
+  static const double resolve_dmg_mod = 0.25; // multiplier for the resolve damage component
+  const double resolve_sta_mod = 1 / 250.0 /  _player.dbc.resolve_item_scaling( _player.level );
+  static const timespan_t max_interval = timespan_t::from_seconds( 10.0 );
+
+  // cycle through the resolve damage table and add the appropriate amount of Resolve from each event
+  double new_amount = 0;
+
+  // Iterate through the Resolve event list, retrieving each event's details
+  const damage_event_list_t::list_t& list= _damage_list -> event_list;
+  if ( ! list.empty() )
+  {
+    _diminishing_return_list -> update_list( _player.sim -> current_time );
+
+    damage_event_list_t::list_t::const_reverse_iterator i, end;
+    for ( i = list.rbegin(), end = list.rend(); i != end; ++i )
+    {
+      // Only loop from the end until we are over the 10s mark, then break the loop
+      if ( ( _player.sim -> current_time - (*i).event_time ) > max_interval )
+        break;
+
+      // temp variable for current event's contribution
+      // note that this already includes the 2.5x multiplier for spell damage and the normalization
+      // by player max health (all of that done in action_t::update_resolve() )
+      double contribution = (*i).event_amount;
+
+      // apply time-based decay
+      double delta_t = ( _player.sim -> current_time - (*i).event_time ).total_seconds();
+      contribution *= 2.0 * ( 10.0 - delta_t ) / 10.0;
+
+      // apply diminishing returns
+      int rank = _diminishing_return_list -> get_diminishing_return_factor( (*i).actor_spawn_index );
+      contribution /= rank;
+
+      // add to existing amount
+      new_amount += contribution;
+    }
+  }
+
+  // multiply by damage modifier
+  new_amount *= resolve_dmg_mod;
+
+  // add stamina-based contribution
+  new_amount += _player.get_attribute( ATTR_STAMINA ) * resolve_sta_mod;
+
+  // multiply by 100 for display purposes
+  new_amount *= 100;
+
+  // updatee the buff
+  _player.buffs.resolve -> trigger( 1, new_amount, 1, timespan_t::zero() );
+
+  // also add this to the Resolve timeline for accuracy
+  _player.resolve_timeline.add( _player.sim -> current_time, _player.buffs.resolve -> value() );
+}
+
+void manager_t::add_diminishing_return_entry( const player_t* actor, double raw_dps, timespan_t current_time )
+{
+  _diminishing_return_list -> add( actor, raw_dps, current_time );
+}
+
+void manager_t::add_damage_event( const player_t* actor, double amount, timespan_t current_time )
+{
+  _damage_list -> add( actor, amount, current_time );
+}
+
+} // end namespace resolve

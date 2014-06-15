@@ -123,10 +123,8 @@ public:
     const spell_data_t* icy_veins;
     const spell_data_t* inferno_blast;
     const spell_data_t* living_bomb;
-    const spell_data_t* loose_mana;
     const spell_data_t* mirror_image;
     const spell_data_t* splitting_ice;
-
 
     // Minor
     const spell_data_t* arcane_brilliance;
@@ -1967,7 +1965,7 @@ struct flamestrike_t : public mage_spell_t
 struct frost_armor_t : public mage_spell_t
 {
   frost_armor_t( mage_t* p, const std::string& options_str ) :
-    mage_spell_t( "frost_armor", p, p -> find_class_spell( "Frost Armor" ) )
+    mage_spell_t( "frost_armor", p, p -> find_specialization_spell( "Frost Armor" ) )
   {
     parse_options( NULL, options_str );
     harmful = false;
@@ -2747,11 +2745,12 @@ struct inferno_blast_t : public mage_spell_t
     }
   }
 
-  virtual double crit_chance( double /* crit */, int /* delta_level */ ) const
-  {
-    // Inferno Blast always crits
-    return 1.0;
-  }
+  // Inferno Blast always crits
+  virtual double composite_crit() const
+  { return 1.0; }
+
+  virtual double composite_target_crit( player_t* ) const
+  { return 0.0; }
 
   virtual double composite_target_multiplier( player_t* t ) const
   {
@@ -2883,7 +2882,7 @@ struct living_bomb_t : public mage_spell_t
 struct mage_armor_t : public mage_spell_t
 {
   mage_armor_t( mage_t* p, const std::string& options_str ) :
-    mage_spell_t( "mage_armor", p, p -> find_class_spell( "Mage Armor" ) )
+    mage_spell_t( "mage_armor", p, p -> find_specialization_spell( "Mage Armor" ) )
   {
     parse_options( NULL, options_str );
     harmful = false;
@@ -2951,7 +2950,7 @@ struct mirror_image_t : public mage_spell_t
 struct molten_armor_t : public mage_spell_t
 {
   molten_armor_t( mage_t* p, const std::string& options_str ) :
-    mage_spell_t( "molten_armor", p, p -> find_class_spell( "Molten Armor" ) )
+    mage_spell_t( "molten_armor", p, p -> find_specialization_spell( "Molten Armor" ) )
   {
     parse_options( NULL, options_str );
     harmful = false;
@@ -3168,7 +3167,7 @@ struct pyroblast_t : public mage_spell_t
     c += p() -> sets.set( SET_T15_4PC_CASTER ) -> effectN( 2 ).percent();
 
     if ( p() -> buffs.fiery_adept -> check() )
-      c += 100.0;
+      c += 1.0;
 
     return c;
   }
@@ -3875,7 +3874,6 @@ void mage_t::init_spells()
   glyphs.icy_veins           = find_glyph_spell( "Glyph of Icy Veins" );
   glyphs.inferno_blast       = find_glyph_spell( "Glyph of Inferno Blast" );
   glyphs.living_bomb         = find_glyph_spell( "Glyph of Living Bomb" );
-  glyphs.loose_mana          = find_glyph_spell( "Glyph of Loose Mana" );
   glyphs.mirror_image        = find_glyph_spell( "Glyph of Mirror Image" );
   glyphs.splitting_ice       = find_glyph_spell( "Glyph of Splitting Ice" );
 
@@ -4089,7 +4087,7 @@ void mage_t::apl_precombat()
   precombat -> add_action( this, "Arcane Brilliance" );
 
   // Armor
-  if ( specialization() == MAGE_ARCANE && !sets.has_set_bonus( SET_T16_4PC_CASTER ) ) // use Frost Armor for arcane mages with 4p T16
+  if ( specialization() == MAGE_ARCANE ) // use Frost Armor for arcane mages with 4p T16
     precombat -> add_action( this, "Mage Armor" );
   else if ( specialization() == MAGE_FIRE )
     precombat -> add_action( this, "Molten Armor" );
@@ -4130,7 +4128,6 @@ void mage_t::apl_arcane()
 
   default_list -> add_action( this, "Counterspell", "if=target.debuff.casting.react" );
   default_list -> add_talent( this, "Cold Snap", "if=health.pct<30" );
-  default_list -> add_action( this, "Conjure Mana Gem", "if=mana_gem_charges<3&target.debuff.invulnerable.react" );
   default_list -> add_action( this, "Time Warp", "if=target.health.pct<25|time>5" );
   //not useful if bloodlust is check in option.
 
@@ -4192,7 +4189,6 @@ void mage_t::apl_fire()
 
   default_list -> add_action( this, "Counterspell", "if=target.debuff.casting.react" );
   default_list -> add_talent( this, "Cold Snap", "if=health.pct<30" );
-  default_list -> add_action( this, "Conjure Mana Gem", "if=mana_gem_charges<3&target.debuff.invulnerable.react" );
   default_list -> add_action( this, "Time Warp", "if=target.health.pct<25|time>5" );
   //not useful if bloodlust is check in option.
 
@@ -4238,7 +4234,6 @@ void mage_t::apl_frost()
 
   default_list -> add_action( this, "Counterspell", "if=target.debuff.casting.react" );
   default_list -> add_talent( this, "Cold Snap", "if=health.pct<30" );
-  default_list -> add_action( this, "Conjure Mana Gem", "if=mana_gem_charges<3&target.debuff.invulnerable.react" );
   default_list -> add_action( this, "Time Warp", "if=target.health.pct<25|time>5" );
   //not useful if bloodlust is check in option.
 
@@ -4292,6 +4287,7 @@ void mage_t::apl_default()
 double mage_t::mana_regen_per_second() const
 {
   double mp5 = player_t::mana_regen_per_second();
+  mp5 = 8000; // FIX LATER
 
   if ( passives.nether_attunement -> ok() )
     mp5 /= cache.spell_speed();

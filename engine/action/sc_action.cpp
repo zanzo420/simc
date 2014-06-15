@@ -702,20 +702,6 @@ timespan_t action_t::travel_time() const
   return timespan_t::from_seconds( t );
 }
 
-// action_t::crit_chance ====================================================
-
-double action_t::crit_chance( double crit, int delta_level ) const
-{
-  double chance = crit;
-
-  chance -= std::max( delta_level, 0 ) / 100.0;
-
-  if ( chance < 0.0 )
-    chance = 0.0;
-
-  return chance;
-}
-
 // action_t::total_crit_bonus ===============================================
 
 double action_t::total_crit_bonus() const
@@ -752,8 +738,8 @@ double action_t::calculate_weapon_damage( double attack_power )
 
   if ( sim -> debug )
   {
-    sim -> out_debug.printf( "%s weapon damage for %s: td=%.3f wd=%.3f bd=%.3f ws=%.3f pd=%.3f ap=%.3f",
-                   player -> name(), name(), total_dmg, dmg, weapon -> bonus_dmg, weapon_speed.total_seconds(), power_damage, attack_power );
+    sim -> out_debug.printf( "%s weapon damage for %s: base=%.0f-%.0f td=%.3f wd=%.3f bd=%.3f ws=%.3f pd=%.3f ap=%.3f",
+                   player -> name(), name(), weapon -> min_dmg, weapon -> max_dmg, total_dmg, dmg, weapon -> bonus_dmg, weapon_speed.total_seconds(), power_damage, attack_power );
   }
 
   return total_dmg;
@@ -1180,9 +1166,7 @@ result_e action_t::calculate_multistrike_result( action_state_t* s )
   {
     r = RESULT_MULTISTRIKE;
 
-    int delta_level = s -> target -> level - player -> level;
-    double crit = crit_chance( s -> composite_crit(), delta_level );
-    if ( rng().roll( crit ) )
+    if ( rng().roll( std::max( s -> composite_crit(), 0.0 ) ) )
       r = RESULT_MULTISTRIKE_CRIT;
   }
 
@@ -1270,7 +1254,7 @@ void action_t::tick( dot_t* d )
     d -> state -> result = RESULT_HIT;
     update_state( d -> state, type == ACTION_HEAL ? HEAL_OVER_TIME : DMG_OVER_TIME );
 
-    if ( tick_may_crit && rng().roll( crit_chance( d -> state -> composite_crit(), d -> state -> target -> level - player -> level ) ) )
+    if ( tick_may_crit && rng().roll( d -> state -> composite_crit() ) )
       d -> state -> result = RESULT_CRIT;
 
     d -> state -> result_amount = calculate_tick_amount( d -> state, d -> get_last_tick_factor() );
@@ -1303,84 +1287,52 @@ void action_t::last_tick( dot_t* d )
   }
 }
 
-// action_t::update_vengeance ===============================================
+// action_t::update_resolve ======================================================
 
-void action_t::update_vengeance( dmg_e type,
+void action_t::update_resolve( dmg_e type,
                                  action_state_t* s )
 {
-  // Vengenace damage->pct modifier
-  double veng_pct = ( ! sim -> challenge_mode ) ? 0.015 : 0.018;  // the new value (0.015) is in spellid 84839, effect#1.  CM value is not.
+  // pointers to make life easy
+  player_t* source = s -> action -> player;
+  player_t* target = s -> target;
 
-  // check that the target has vengeance, damage type, and that the executing player is an enemy
-  if ( s -> target -> vengeance_is_started() && ( type == DMG_DIRECT || type == DMG_OVER_TIME ) && s-> action -> player -> is_enemy() )
+  // check that the target has Resolve, check for damage type, and check that the source player is an enemy
+  if ( target -> resolve_manager.is_started() && ( type == DMG_DIRECT || type == DMG_OVER_TIME ) && source -> is_enemy() )
   {
+
     // bool for auto attack, to make code easier to read
     bool is_auto_attack = ( player -> main_hand_attack && s -> action == player -> main_hand_attack ) || ( player -> off_hand_attack && s -> action == player -> off_hand_attack );
 
-    // On spell/special attacks that miss, we just extend the duration of Vengeance.  This includes all RESULT_MISS events and
-    // dodged/parried attacks that are not auto-attacks; Auto-attack dodges/parries still grant Vengeance normally based on raw damage
-    if ( ( s -> result == RESULT_MISS && ! sim -> challenge_mode ) || // 5.4: misses do not generate Vengeance except in CM
-         ( result_is_miss( s -> result ) && ! is_auto_attack ) )      // Any avoided non-auto-attack
+    // Resolve is only updated on damage taken events. The one exception is auto-attacks, which grant Resolve even on a dodge/parry.
+    // If this is a miss that isn't an auto-attack, we can bail out early (and not recalculate)
+    if ( result_is_miss( s -> result ) && ! is_auto_attack )
+      return;
+
+    // Store raw damage of attack result
+    double raw_resolve_amount = s -> result_raw;
+    
+    // If the attack does zero damage, it's irrelevant for the purposes
+    // Skip updating the Resolve tabless if the damage is zero to limit unnecessary events
+    if ( raw_resolve_amount > 0.0 )
     {
-      //extend duration, but do not add any vengeance
-      s -> target -> buffs.vengeance -> trigger( 1,
-                                                 s -> target -> buffs.vengeance -> value(),
-                                                 1.0 ,
-                                                 timespan_t::from_seconds( 20.0 ) );
+      // modify according to damage type; spell damage gives 2.5x as much Resolve
+      raw_resolve_amount *= ( get_school() == SCHOOL_PHYSICAL ? 1.0 : 2.5 );
+
+      // normalize by player's current health, ignoring any temporary health buffs
+      raw_resolve_amount /= ( target -> resources.max[ RESOURCE_HEALTH ] - target -> temporary.resource[ RESOURCE_HEALTH ] );
+
+      // update the player's resolve_actor_list
+      target -> resolve_manager.add_diminishing_return_entry( source, source -> get_raw_dps( s ), sim -> current_time );
+
+      // update the player's resolve damage table if the attack did nonzero damage
+      target -> resolve_manager.add_damage_event( source, raw_resolve_amount, sim -> current_time );
+    
+      // cycle through the resolve damage table and add the appropriate amount of Resolve from each event
+      target -> resolve_manager.update();
     }
-    else // vengeance from auto attack or successful spell
-    {
-      // update the player's vengeance_actor_list
-      if ( ! sim -> challenge_mode )
-        s -> target -> vengeance_list.add( player, player -> get_raw_dps( s ), sim -> current_time );
 
-      double raw_damage = s -> result_raw;
 
-      // Take swing time for auto_attacks, take 60 for special attacks (this is how blizzard does it)
-      double attack_frequency = 0.0;
-      if ( ( player -> main_hand_attack && s -> action == player -> main_hand_attack ) || ( player -> off_hand_attack && s -> action == player -> off_hand_attack ) )
-        attack_frequency = 1.0 / s -> action -> execute_time().total_seconds();
-      else
-        attack_frequency = 1.0 / 60.0;
-
-      // Create new vengeance value
-      double new_amount = veng_pct * raw_damage; // new vengeance from hit
-
-      // modify according to damage type; spell damage gives 2.5x as much Vengeance
-      new_amount *= ( get_school() == SCHOOL_PHYSICAL ? 1.0 : 2.5 );
-
-      // apply diminishing returns according to position on actor list
-      if ( ! sim -> challenge_mode  )
-        new_amount /= s -> target -> vengeance_list.get_actor_rank( player );
-
-      // Perform 20-second decaying average
-      new_amount += s -> target -> buffs.vengeance -> value() *
-                    s -> target -> buffs.vengeance -> remains().total_seconds() / 20.0; // old diminished vengeance
-
-      // calculate vengeance equilibrium and engage 50% ramp-up mechanism if appropriate
-      double vengeance_equil = veng_pct * raw_damage * attack_frequency * 20;
-      if ( vengeance_equil / 2.0 > new_amount )
-      {
-        if ( sim -> debug )
-        {
-          sim -> out_debug.printf( "%s triggered vengeance ramp-up mechanism due to %s from %s because new amount=%.2f and equilibrium=%.2f.",
-                         s -> target -> name(), s -> action -> name(), s -> action -> player -> name(), new_amount, vengeance_equil );
-        }
-        new_amount = vengeance_equil / 2.0;
-      }
-
-      // clamp at max health
-      if ( new_amount > s -> target -> resources.max[ RESOURCE_HEALTH ] ) new_amount = s -> target -> resources.max[ RESOURCE_HEALTH ];
-
-      if ( sim -> debug )
-      {
-        sim -> out_debug.printf( "%s updated vengeance due to %s from %s. New vengeance.value=%.2f vengeance.damage=%.2f.",
-                       s -> target -> name(), s -> action -> name(), s -> action -> player -> name() , new_amount, raw_damage );
-      }
-
-      s -> target -> buffs.vengeance -> trigger( 1, new_amount, 1, timespan_t::from_seconds( 20.0 ) );
-    }
-  } // END Vengeance
+  } // END Resolve
 }
 
 // action_t::assess_damage ==================================================
@@ -1388,8 +1340,8 @@ void action_t::update_vengeance( dmg_e type,
 void action_t::assess_damage( dmg_e    type,
                               action_state_t* s )
 {
-  // hook up vengeance here, before armor mitigation, avoidance, and dmg reduction effects, etc.
-  update_vengeance( type, s );
+  // hook up resolve here, before armor mitigation, avoidance, and dmg reduction effects, etc.
+  update_resolve( type, s );
 
   s -> target -> assess_damage( get_school(), type, s );
 
@@ -1724,18 +1676,17 @@ void action_t::init()
 
   if ( quiet ) stats -> quiet = true;
 
-  // TODO: WOD-MULTISTRIKE
   if ( may_multistrike == -1 )
     may_multistrike = may_crit || tick_may_crit;
 
   if ( may_crit || tick_may_crit )
     snapshot_flags |= STATE_CRIT | STATE_TGT_CRIT;
 
-  if ( spell_power_mod.tick > 0 || dot_duration > timespan_t::zero() )
-    snapshot_flags |= STATE_MUL_TA | STATE_TGT_MUL_TA | STATE_MUL_PERSISTENT;
+  if ( ( spell_power_mod.tick > 0 || attack_power_mod.tick > 0 ) && dot_duration > timespan_t::zero() )
+    snapshot_flags |= STATE_MUL_TA | STATE_TGT_MUL_TA | STATE_MUL_PERSISTENT | STATE_VERSATILITY;
 
   if ( ( spell_power_mod.direct > 0 || attack_power_mod.direct > 0 ) || weapon_multiplier > 0 )
-    snapshot_flags |= STATE_MUL_DA | STATE_TGT_MUL_DA | STATE_MUL_PERSISTENT;
+    snapshot_flags |= STATE_MUL_DA | STATE_TGT_MUL_DA | STATE_MUL_PERSISTENT | STATE_VERSATILITY;
 
   if ( ( spell_power_mod.direct > 0 || spell_power_mod.tick > 0 ) )
     snapshot_flags |= STATE_SP;
@@ -2038,15 +1989,57 @@ expr_t* action_t::create_expression( const std::string& name_str )
     return new cast_delay_expr_t( *this );
   }
   else if ( name_str == "tick_multiplier" )
-    return make_mem_fn_expr( "tick_multiplier", *this, &action_t::composite_ta_multiplier );
+  {
+    struct tick_multiplier_expr_t : public expr_t
+    {
+      action_t* action;
+      action_state_t* state;
+
+      tick_multiplier_expr_t( action_t* a ) : 
+        expr_t( "tick_multiplier" ), action( a ), state( a -> get_state() )
+      {
+        state -> n_targets    = 1;
+        state -> chain_target = 0;
+      }
+
+      virtual double evaluate()
+      {
+        action -> snapshot_state( state, RESULT_TYPE_NONE );
+        state -> target = action -> target;
+
+        return action -> composite_ta_multiplier( state );
+      }
+
+      virtual ~tick_multiplier_expr_t()
+      { delete state; }
+    };
+
+    return new tick_multiplier_expr_t( this );
+  }
   else if ( name_str == "persistent_multiplier" )
   {
     struct persistent_multiplier_expr_t : public expr_t
     {
       action_t* action;
-      persistent_multiplier_expr_t( action_t* a ) : expr_t( "persistent_multiplier" ), action( a ) {}
+      action_state_t* state;
+
+      persistent_multiplier_expr_t( action_t* a ) : 
+        expr_t( "persistent_multiplier" ), action( a ), state( a -> get_state() )
+      {
+        state -> n_targets    = 1;
+        state -> chain_target = 0;
+      }
+
       virtual double evaluate()
-      { return action -> player -> composite_persistent_multiplier( action -> school ); }
+      {
+        action -> snapshot_state( state, RESULT_TYPE_NONE );
+        state -> target = action -> target;
+
+        return action -> composite_persistent_multiplier( state );
+      }
+
+      virtual ~persistent_multiplier_expr_t()
+      { delete state; }
     };
 
     return new persistent_multiplier_expr_t( this );
@@ -2092,11 +2085,24 @@ expr_t* action_t::create_expression( const std::string& name_str )
     struct crit_pct_current_expr_t : public expr_t
     {
       action_t* action;
-      crit_pct_current_expr_t( action_t* a ) : expr_t( "crit_pct_current" ), action( a ) {}
+      action_state_t* state;
+
+      crit_pct_current_expr_t( action_t* a ) :
+        expr_t( "crit_pct_current" ), action( a ), state( a -> get_state() )
+      {
+        state -> n_targets = 1;
+        state -> chain_target = 0;
+      }
       virtual double evaluate()
       {
-        return action -> composite_crit() * 100.0;
+        state -> target = action -> target;
+        action -> snapshot_state( state, RESULT_TYPE_NONE );
+
+        return std::min( 100.0, state -> composite_crit() * 100.0 );
       }
+
+      virtual ~crit_pct_current_expr_t()
+      { delete state; }
     };
     return new crit_pct_current_expr_t( this );
   }
@@ -2294,11 +2300,14 @@ void action_t::snapshot_internal( action_state_t* state, uint32_t flags, dmg_e r
   if ( flags & STATE_SP )
     state -> spell_power = int( composite_spell_power() * player -> composite_spell_power_multiplier() );
 
+  if ( flags & STATE_VERSATILITY )
+    state -> versatility = composite_versatility( state );
+
   if ( flags & STATE_MUL_DA )
-    state -> da_multiplier = composite_da_multiplier();
+    state -> da_multiplier = composite_da_multiplier( state );
 
   if ( flags & STATE_MUL_TA )
-    state -> ta_multiplier = composite_ta_multiplier();
+    state -> ta_multiplier = composite_ta_multiplier( state );
 
   if ( flags & STATE_MUL_PERSISTENT )
     state -> persistent_multiplier = composite_persistent_multiplier( state );
@@ -2341,16 +2350,7 @@ timespan_t action_t::composite_dot_duration( const action_state_t* s ) const
 
 double action_t::composite_target_crit( player_t* target ) const
 {
-  double c = 0.0;
-
-  // "Crit chances of players against mobs that are higher level than you are reduced by 1% per level difference, in Mists."
-  // Ghostcrawler on 20/6/2012 at http://us.battle.net/wow/en/forum/topic/5889309137?page=5#97
-  if ( ( target -> is_enemy() || target -> is_add() ) && ( target -> level > player -> level ) )
-  {
-    c -= 0.01 * ( target -> level - player -> level );
-  }
-
-  return c;
+  return std::min( player -> level - target -> level, 0 ) / 100.0;
 }
 
 core_event_t* action_t::start_action_execute_event( timespan_t t, action_state_t* execute_event )

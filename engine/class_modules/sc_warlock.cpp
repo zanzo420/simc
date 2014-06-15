@@ -112,7 +112,6 @@ public:
   {
     // Major Glyphs
     // All Specs
-    const spell_data_t* curse_of_elements;
     const spell_data_t* curses;
     const spell_data_t* dark_soul;
     const spell_data_t* demon_training;
@@ -1886,58 +1885,6 @@ public:
   }
 };
 
-
-struct curse_of_the_elements_t : public warlock_spell_t
-{
-  curse_of_the_elements_t* fnb;
-
-  curse_of_the_elements_t( warlock_t* p ) :
-    warlock_spell_t( p, "Curse of the Elements" ),
-    fnb( new curse_of_the_elements_t( "curse_of_elements", p, p -> find_spell( 104225 ) ) )
-  {
-    havoc_consume = 1;
-    background = ( sim -> overrides.magic_vulnerability != 0 );
-    dot_duration = timespan_t::zero();
-    aoe = p -> glyphs.curse_of_elements -> ok() ? 3 : 0;
-    may_crit = false;
-  }
-
-  curse_of_the_elements_t( const std::string& n, warlock_t* p, const spell_data_t* spell ) :
-    warlock_spell_t( n, p, spell ),
-    fnb( 0 )
-  {
-    aoe = -1;
-    stats = p -> get_stats( "curse_of_elements_fnb" );
-  }
-
-  double cost() const
-  {
-    if ( fnb && p() -> buffs.fire_and_brimstone -> check() )
-      return fnb -> cost();
-    return warlock_spell_t::cost();
-  }
-
-  void schedule_execute( action_state_t* state )
-  {
-    if ( fnb && p() -> buffs.fire_and_brimstone -> check() ) 
-      fnb -> schedule_execute( state );
-    else
-      warlock_spell_t::schedule_execute();
-  }
-
-  virtual void impact( action_state_t* state )
-  {
-    warlock_spell_t::impact( state );
-
-    if ( result_is_hit( state -> result ) )
-    {
-      if ( ! sim -> overrides.magic_vulnerability )
-        state -> target -> debuffs.magic_vulnerability -> trigger( 1, buff_t::DEFAULT_VALUE(), -1, data().duration() );
-    }
-  }
-};
-
-
 struct agony_t : public warlock_spell_t
 {
   agony_t( warlock_t* p ) :
@@ -2615,9 +2562,9 @@ struct immolate_t : public warlock_spell_t
     return warlock_spell_t::cost();
   }
 
-  virtual double crit_chance( double crit, int delta_level ) const
+  virtual double composite_crit() const
   {
-    double cc = warlock_spell_t::crit_chance(crit, delta_level);
+    double cc = warlock_spell_t::composite_crit();
 
     if ( p() -> sets.has_set_bonus( SET_T16_2PC_CASTER ) && p() -> buffs.tier16_2pc_destructive_influence -> check() )
       cc += p() -> buffs.tier16_2pc_destructive_influence -> value();
@@ -2824,9 +2771,9 @@ struct incinerate_t : public warlock_spell_t
     return warlock_spell_t::cost();
   }
 
-  virtual double crit_chance( double crit, int delta_level ) const
+  virtual double composite_crit() const
   {
-    double cc = warlock_spell_t::crit_chance( crit, delta_level );
+    double cc = warlock_spell_t::composite_crit();
 
     if ( p() -> sets.has_set_bonus( SET_T16_2PC_CASTER ) && p() -> buffs.tier16_2pc_destructive_influence -> check() )
       cc += p() -> buffs.tier16_2pc_destructive_influence -> value();
@@ -2961,11 +2908,12 @@ struct soul_fire_t : public warlock_spell_t
     return t;
   }
 
-  virtual double crit_chance( double /* crit */, int /* delta_level */ ) const
-  {
-    // Soul fire always crits
-    return 1.0;
-  }
+  // Soul fire always crits
+  virtual double composite_crit() const
+  { return 1.0; }
+
+  virtual double composite_target_crit( player_t* ) const
+  { return 0.0; }
 
   virtual double action_multiplier() const
   {
@@ -3009,11 +2957,11 @@ struct chaos_bolt_t : public warlock_spell_t
       dot_duration = p -> talents.grimoire_of_sacrifice -> effectN( 12 ).time_value();
   }
 
-  virtual double crit_chance( double /* crit */, int /* delta_level */ ) const
-  {
-    // Chaos Bolt always crits
-    return 1.0;
-  }
+  virtual double composite_crit() const
+  { return 1.0; }
+
+  virtual double composite_target_crit( player_t* ) const
+  { return 0.0; }
 
   virtual double cost() const
   {
@@ -4598,7 +4546,6 @@ action_t* warlock_t::create_action( const std::string& action_name,
   else if ( action_name == "doom"                  ) a = new                  doom_t( this );
   else if ( action_name == "chaos_bolt"            ) a = new            chaos_bolt_t( this );
   else if ( action_name == "chaos_wave"            ) a = new            chaos_wave_t( this );
-  else if ( action_name == "curse_of_the_elements" ) a = new curse_of_the_elements_t( this );
   else if ( action_name == "touch_of_chaos"        ) a = new        touch_of_chaos_t( this );
   else if ( action_name == "drain_life"            ) a = new            drain_life_t( this );
   else if ( action_name == "grimoire_of_sacrifice" ) a = new grimoire_of_sacrifice_t( this );
@@ -4838,7 +4785,6 @@ void warlock_t::init_spells()
   glyphs.carrion_swarm          = find_glyph_spell( "Glyph of Carrion Swarm" );
   glyphs.conflagrate            = find_glyph_spell( "Glyph of Conflagrate" );
   glyphs.crimson_banish         = find_glyph_spell( "Glyph of Crimson Banish" );
-  glyphs.curse_of_elements      = find_glyph_spell( "Glyph of Curse Of Elements" );
   glyphs.curse_of_exhaustion    = find_glyph_spell( "Glyph of Curse of Exhaustion" );
   glyphs.curses                 = find_glyph_spell( "Glyph of Curses" );
   glyphs.dark_soul              = find_glyph_spell( "Glyph of Dark Soul" );
@@ -5052,8 +4998,6 @@ void warlock_t::apl_precombat()
     else if ( level >= 80 )
       precombat_list += "/volcanic_potion";
   }
-
-  add_action( "Curse of the Elements", "if=debuff.magic_vulnerability.down" );
 
   // Usable Item
   for ( int i = as<int>( items.size() ) - 1; i >= 0; i-- )

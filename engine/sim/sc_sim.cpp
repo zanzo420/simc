@@ -851,6 +851,7 @@ sim_t::sim_t( sim_t* p, int index ) :
   active_player( 0 ),
   num_players( 0 ),
   num_enemies( 0 ),
+  global_spawn_index( 0 ),
   max_player_level( -1 ),
   queue_lag( timespan_t::from_seconds( 0.037 ) ), queue_lag_stddev( timespan_t::zero() ),
   gcd_lag( timespan_t::from_seconds( 0.150 ) ), gcd_lag_stddev( timespan_t::zero() ),
@@ -1033,16 +1034,16 @@ void sim_t::combat_begin()
     auras.mastery -> override_buff( 1, dbc.effect_average( dbc.spell( 116956 ) -> effectN( 1 ).id(), max_player_level ) );
 
   if ( overrides.haste                   ) auras.haste                   -> override_buff();
+  if ( overrides.multistrike             ) auras.multistrike             -> override_buff();
   if ( overrides.spell_power_multiplier  ) auras.spell_power_multiplier  -> override_buff();
   if ( overrides.stamina                 ) auras.stamina                 -> override_buff();
   if ( overrides.str_agi_int             ) auras.str_agi_int             -> override_buff();
+  if ( overrides.versatility             ) auras.versatility             -> override_buff();
 
   for ( size_t i = 0; i < target_list.size(); ++i )
   {
     player_t* t = target_list[ i ];
-    if ( overrides.magic_vulnerability    ) t -> debuffs.magic_vulnerability    -> override_buff();
     if ( overrides.mortal_wounds          ) t -> debuffs.mortal_wounds          -> override_buff();
-    if ( overrides.physical_vulnerability ) t -> debuffs.physical_vulnerability -> override_buff();
     if ( overrides.bleeding               ) t -> debuffs.bleeding               -> override_buff( 1, 1.0 );
   }
 
@@ -1491,6 +1492,12 @@ bool sim_t::init()
                       .default_value( dbc.spell( 49868 ) -> effectN( 1 ).percent() )
                       .add_invalidate( CACHE_HASTE );
 
+  // Multistrike, value from Mind Quickening (id=49868) (Priest)
+  auras.multistrike = buff_creator_t( this, "multistrike" )
+                      .max_stack( 100 )
+                      .default_value( dbc.spell( 49868 ) -> effectN( 2 ).percent() )
+                      .add_invalidate( CACHE_MULTISTRIKE );
+
   // Spell Power Multiplier, value from Burning Wrath (id=77747) (Shaman)
   auras.spell_power_multiplier = buff_creator_t( this, "spell_power_multiplier" )
                                  .max_stack( 100 )
@@ -1510,6 +1517,13 @@ bool sim_t::init()
                       .add_invalidate( CACHE_STRENGTH )
                       .add_invalidate( CACHE_AGILITY )
                       .add_invalidate( CACHE_INTELLECT );
+
+  // Versatility --########## ADD IN ACTUAL AURA NAME WITH NEW SPELL DATA #########
+  // Warriors will have it.
+  auras.versatility = buff_creator_t( this, "versatility" )
+                      .max_stack( 100 )
+                      .default_value( 0.03 ) //Check
+                      .add_invalidate( CACHE_VERSATILITY );
 
   // Find Already defined target, otherwise create a new one.
   if ( debug )
@@ -1963,14 +1977,14 @@ void sim_t::use_optimal_buffs_and_debuffs( int value )
   overrides.attack_power_multiplier = optimal_raid;
   overrides.critical_strike         = optimal_raid;
   overrides.mastery                 = optimal_raid;
-  overrides.haste             = optimal_raid;
+  overrides.haste                   = optimal_raid;
+  overrides.multistrike             = optimal_raid;
   overrides.spell_power_multiplier  = optimal_raid;
   overrides.stamina                 = optimal_raid;
   overrides.str_agi_int             = optimal_raid;
+  overrides.versatility             = optimal_raid;
 
-  overrides.magic_vulnerability     = optimal_raid;
   overrides.mortal_wounds           = optimal_raid;
-  overrides.physical_vulnerability  = optimal_raid;
   overrides.bleeding                = optimal_raid;
 
   overrides.bloodlust               = optimal_raid;
@@ -2090,12 +2104,12 @@ void sim_t::create_options()
     opt_int( "override.critical_strike", overrides.critical_strike ),
     opt_int( "override.mastery", overrides.mastery ),
     opt_int( "override.haste", overrides.haste ),
+    opt_int( "override.multistrike", overrides.multistrike ),
     opt_int( "override.spell_power_multiplier", overrides.spell_power_multiplier ),
     opt_int( "override.stamina", overrides.stamina ),
     opt_int( "override.str_agi_int", overrides.str_agi_int ),
-    opt_int( "override.magic_vulnerability", overrides.magic_vulnerability ),
+    opt_int( "override.versatility", overrides.versatility ),
     opt_int( "override.mortal_wounds", overrides.mortal_wounds ),
-    opt_int( "override.physical_vulnerability", overrides.physical_vulnerability ),
     opt_int( "override.bleeding", overrides.bleeding ),
     opt_func( "override.spell_data", parse_override_spell_data ),
     opt_float( "override.target_health", overrides.target_health ),

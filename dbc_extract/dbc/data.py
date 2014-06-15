@@ -113,6 +113,14 @@ _DIFF_DATA = {
         'SpellMisc.dbc': [
             ( 'unk_18322', _ADD_FIELD, 'prj_speed' )
         ]
+    },
+    18379: {
+        'SpellMisc.dbc': [
+            ( 'id_spell', _REMOVE_FIELD ),
+            ( 'unk_1', _REMOVE_FIELD ),
+            ( 'unk_18322', _REMOVE_FIELD ),
+            ( 'unk_18379', _ADD_FIELD, 'mask_school' )
+        ]
     }
 }
 
@@ -185,6 +193,9 @@ _DBC_FIELDS = {
     ],
     'ItemArmorTotal.dbc' : [
         'id', ( 'ilevel', '%4u' ), ( 'v_1', '%12.6f' ), ( 'v_2', '%12.6f' ), ( 'v_3', '%12.6f' ), ( 'v_4', '%12.6f' )
+    ],
+    'ItemBonus.db2': [
+        'id', 'f1', 'f2', 'f3', 'f4', 'f5'
     ],
     'ItemClass.dbc' : [
           ( 'id', '%3d' ), 'unk_1', 'unk_2', 'unk_3', 'ofs_name'
