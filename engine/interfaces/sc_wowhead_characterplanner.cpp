@@ -186,7 +186,11 @@ bool parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& 
     return false;
   }
   const rapidjson::Value& talent_spec_list= talent_tab.content[ tab_id.c_str() ][ active_spec ];
-
+  if (   ! talent_spec_list.IsArray() || talent_spec_list.Size() != 10 )
+  {
+    sim -> errorf( "WOWHEAD API: Unable to extract player talent/glyph data from '%s'.\n", p -> name() );
+    return false;
+  }
   std::string talent_encoding = util::to_string( talent_spec_list[ 2 ].GetUint() );
   //std::cout << "\ntalent string: " << talent_encoding << "\n";
 
@@ -199,6 +203,26 @@ bool parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& 
   p -> create_talents_armory();
   */
 
+  // unsigned dbc_t::glyph_spell_id( unsigned property_id ) const;
+  for (rapidjson::SizeType i = 3; i < talent_spec_list.Size(); ++i )
+  {
+    unsigned glyph_property_id = talent_spec_list[ i ].GetUint();
+    if ( glyph_property_id == 0 )
+      continue;
+
+    unsigned glyph_spell_id = p -> dbc.glyph_spell_id( glyph_property_id );
+    const spell_data_t* glyph = p -> dbc.spell( glyph_spell_id );
+    std::string glyph_name = glyph -> name_cstr();
+    if ( sim -> debug )
+    {
+      sim -> out_debug.raw() << "WOWHEAD API: glyph_property-id: " << glyph_property_id << " found_glyph_spell_id=" << glyph_spell_id << " found_glyph_name=" << glyph_name << "\n";
+    }
+
+    util::glyph_name( glyph_name );
+    if ( ! p -> glyphs_str.empty() )
+      p -> glyphs_str += '/';
+    p -> glyphs_str += glyph_name;
+  }
   return true;
 
 }
