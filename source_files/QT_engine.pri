@@ -11,7 +11,6 @@
  HEADERS += engine/util/generic.hpp
  HEADERS += engine/util/concurrency.hpp
  HEADERS += engine/util/cache.hpp
- HEADERS += engine/interfaces/sc_wowhead_characterplanner.hpp
  HEADERS += engine/dbc/specialization.hpp
  HEADERS += engine/dbc/dbc.hpp
  PRECOMPILED_HEADER += engine/simulationcraft.hpp

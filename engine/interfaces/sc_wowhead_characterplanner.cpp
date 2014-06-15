@@ -3,7 +3,6 @@
 // Send questions to natehieter@gmail.com
 // ==========================================================================
 
-#include "sc_wowhead_characterplanner.hpp"
 #include "../simulationcraft.hpp"
 #include "util/rapidjson/document.h"
 #include "util/rapidjson/stringbuffer.h"
@@ -15,7 +14,6 @@ enum wowhead_tab_types {
   TAB_EQUIPMENT = -1,
   TAB_TALENTS = -4,
 };
-// WOWHEAD ID translations, starting at 1: slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
 
 std::string get_main_page( unsigned list_id, cache::behavior_e caching )
 {
@@ -85,19 +83,26 @@ std::string get_tab_page( unsigned list_id, unsigned tab_id, cache::behavior_e c
   return tab_page;
 }
 
-std::string get_tab_page( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
+struct wowhead_tab_t {
+  unsigned tab_id;
+  rapidjson::Document content;
+};
+std::pair<unsigned,std::string> get_tab_page( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
 {
-  return get_tab_page( list_id, get_tab_id( list_manager, tab_type ), caching );
+  unsigned tab_id = get_tab_id( list_manager, tab_type );
+  return std::make_pair( tab_id, get_tab_page( list_id, tab_id , caching ) );
 }
 
 
-rapidjson::Document get_tab_data( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
+wowhead_tab_t get_tab_data( unsigned list_id, const rapidjson::Document& list_manager, wowhead_tab_types tab_type, cache::behavior_e caching )
 {
-  std::string s = get_tab_page( list_id, list_manager, tab_type, caching );
-  std::string filtered = "{" + util::get_first_substring_between( s, "{", ");" );
+  std::pair<unsigned,std::string> tab_page = get_tab_page( list_id, list_manager, tab_type, caching );
+  std::string filtered = "{" + util::get_first_substring_between( tab_page.second, "{", ");" );
 
-  rapidjson::Document out;
-  out.Parse< 0 >( filtered.c_str() );
+
+  wowhead_tab_t out;
+  out.tab_id = tab_page.first;
+  out.content.Parse< 0 >( filtered.c_str() );
 
   return out;
 }
@@ -113,14 +118,29 @@ void pretty_print_json( Out& out, const rapidjson::Document& doc )
   out << b.GetString();
 }
 
-void parse_equipment_data( sim_t* sim, player_t* p, const rapidjson::Document& equipment_tab )
+void parse_equipment_data( sim_t* sim, player_t* p, const wowhead_tab_t& equipment_tab )
 {
   // TODO: parse equip stuff into the player
+
+  // WOWHEAD item array entries:
+  // slot, itemid, subitem (no idea what that is), permanentenchant, temporaryenchant, gm1, gem2, gem3, gem4, reforge, upgrade, transmog, hidden
+
+  if ( ! equipment_tab.content.HasMember( util::to_string( equipment_tab.tab_id ).c_str() ) || equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ].IsArray() )
+  {
+    sim -> errorf( "WOWHEAD API: Unable to extract player equip from '%s'.\n", p -> name() );
+  }
+  const rapidjson::Value& equip_list= equipment_tab.content[ util::to_string( equipment_tab.tab_id ).c_str() ];
+  for (rapidjson::SizeType i = 0; i < equip_list.Size(); ++i )
+  {
+    int wowh_slot_id = equip_list[ i ][ rapidjson::SizeType(0) ].GetInt();
+    slot_e our_slot = static_cast<slot_e>( wowh_slot_id - 1 );
+
+  }
 }
 
-void parse_talent_and_glyph_data( sim_t* sim, player_t* p, const rapidjson::Document& talent_tab )
+void parse_talent_and_glyph_data( sim_t* sim, player_t* p, const wowhead_tab_t& talent_tab )
 {
-  // TODO: parse talent stuff into the player
+  // TODO: parse talents and glyphs into the player
 }
 
 } // unnamed namespace
@@ -257,10 +277,10 @@ player_t* wowhead_charplanner::download_player( sim_t* sim,
     p -> professions_str += util::to_string( character_professions[ i ].second );
   }
 
-  rapidjson::Document equipment_tab = get_tab_data( list_id, list_manager, TAB_EQUIPMENT, caching );
+  wowhead_tab_t equipment_tab = get_tab_data( list_id, list_manager, TAB_EQUIPMENT, caching );
   parse_equipment_data( sim, p, equipment_tab );
 
-  rapidjson::Document talents_tab = get_tab_data( list_id, list_manager, TAB_TALENTS, caching );
+  wowhead_tab_t talents_tab = get_tab_data( list_id, list_manager, TAB_TALENTS, caching );
   parse_talent_and_glyph_data( sim, p, talents_tab );
   return p;
 }
@@ -279,9 +299,9 @@ int main()
   rapidjson::Document list_manager = get_json_list_manager_section(  1564664, cache );
   pretty_print_json( std::cout, list_manager );
   std::cout << "\n\n\n";
-  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_EQUIPMENT, cache ) );
+  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_EQUIPMENT, cache ).content );
   std::cout << "\n\n\n";
-  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_TALENTS, cache ) );
+  pretty_print_json( std::cout, get_tab_data(  1564664, list_manager, TAB_TALENTS, cache ).content );
   //wowhead_charplanner::create_player( 1564664 );
 }
 #endif

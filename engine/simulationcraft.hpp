@@ -6402,7 +6402,13 @@ std::string decorated_buff_name( const std::string& name,
                                  bool affix = true );
 }
 
-#include "interfaces/sc_wowhead_characterplanner.hpp"
+namespace wowhead_charplanner {
+
+typedef std::runtime_error exception;
+
+player_t* download_player( sim_t* sim, unsigned list_id, cache::behavior_e caching );
+}
+
 
 // Blizzard Community Platform API ==========================================
 
