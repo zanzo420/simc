@@ -7,6 +7,7 @@
 #include "util/rapidjson/document.h"
 #include "util/rapidjson/stringbuffer.h"
 #include "util/rapidjson/prettywriter.h"
+#include <sstream>
 
 namespace {
 
@@ -300,13 +301,12 @@ player_t* wowhead_charplanner::download_player( sim_t* sim,
     }
     catch ( const char* fieldname )
     {
-      std::string error_str;
+      std::stringstream error;
+      error << "Unable to extract field '" << fieldname << "'";
       if ( list_manager.HasMember( "reason" ) )
-        error_str = list_manager[ "reason" ].GetString();
+        error << ": " << list_manager[ "reason" ].GetString();
 
-      sim -> errorf( "WOWHEAD API: Player '%s' Unable to extract field '%u': %s.\n", list_id,
-            fieldname, error_str.c_str() );
-      return nullptr;
+      throw wowhead_exception( error.str() );
     }
 
     // Load the global player fields
