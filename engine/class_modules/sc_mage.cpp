@@ -2,7 +2,24 @@
 // Dedmonwakeen's DPS-DPM Simulator.
 // Send questions to natehieter@gmail.com
 // ==========================================================================
-
+// WoD To-do
+// Do perks that effect crit (such as enhanced pyrotechnics) also effect the crit chance of multistrike?
+// BUG IGNITE TRIGGERS ON MISSES. Fixing this breaks icicles. Need to investigate
+// Extensive Test - At a glance, enhanced pyrotechnics works properly. Need to test more in depth though (remember CM interacts with this! or does it? test and find out!)
+// multistrike triggering ignite? - CONFIRMED BY CELESTALON TO INTERACT WITH EACHOTHER
+// change the syntax around frostfirebolts implimentation of Enhanced pyrotechnics to match fireballs
+// The the bonus on Improved Pyorblast additive or Multiplicitive (Assumed additive for now. Must confirm)
+// Arcane Missiles perk was hardcoded into the buff definition. Need to eventually change this so it works correctly for sub-90 characters.
+// Need to add in Improved Scorch
+// Imp. Arcane Barrage needs to be tested.
+// Imp. Arcane Explosion needs to be tested.
+// Shatter is changed Shatter: Now Frost only. Multiplies the critical strike chance of all your spells against frozen targets by 1.5 plus an additional 10%. needs to be coded.
+// Having difficulties implimenting Improved Arcane Missiles.
+// Improved Arcane Power needs to have a check for the perk to exist so it functions pre-90 correctly.
+// Need to Add Improved Blink
+// Make improved evocation only work post 90, and make it not a hardcoded 30 second reduction. Also need to test that it works, with a character template that does not have RoP.
+// Hardcoded Enhanced Fingers of Frost to 3 stacks. Need to fix eventually.
+// Need to test if Improved Frostbolt is being applied correctly during Icy Veins (although, IV will change in WoD. May not actually need to this version, but rather test it's application to multi-strike)
 #include "simulationcraft.hpp"
 
 namespace { // UNNAMED NAMESPACE
@@ -93,6 +110,7 @@ public:
     buff_t* potent_flames;
     buff_t* frozen_thoughts;
     buff_t* fiery_adept;
+    buff_t* enhanced_pyrotechnics;
   } buffs;
 
   // Cooldowns
@@ -137,6 +155,44 @@ public:
     const spell_data_t* nether_attunement;
     const spell_data_t* shatter;
   } passives;
+
+  // Perks
+  struct perks_t
+  {
+      //Arcane
+      const spell_data_t* enhanced_arcane_blast;
+      const spell_data_t* enhanced_arcane_missiles;
+      const spell_data_t* improved_arcane_barrage;
+      const spell_data_t* improved_arcane_blast;
+      const spell_data_t* improved_arcane_explosion;
+      const spell_data_t* improved_arcane_missiles;
+      const spell_data_t* improved_arcane_power;
+      const spell_data_t* improved_evocation;
+      const spell_data_t* improved_blink;
+
+      //Fire
+      const spell_data_t* enhanced_inferno_blast;
+      const spell_data_t* improved_dragons_breath;
+      const spell_data_t* improved_combustion;
+      const spell_data_t* improved_fireball_and_frostfire_bolt;
+      const spell_data_t* enhanced_pyrotechnics;
+      const spell_data_t* improved_flamestrike;
+      const spell_data_t* improved_inferno_blast;
+      const spell_data_t* improved_pyroblast;
+      const spell_data_t* improved_scorch;
+
+      //Frost
+      const spell_data_t* enhanced_fingers_of_frost;
+      const spell_data_t* improved_frostbolt;
+      const spell_data_t* enhanced_frostbolt;
+      const spell_data_t* improved_blizzard;
+      const spell_data_t* improved_frost_nova;
+      const spell_data_t* improved_frostfire_bolt;
+      const spell_data_t* improved_ice_lance;
+      const spell_data_t* improved_water_elemental;
+      const spell_data_t* improved_icy_veins;
+
+  } perks;
 
   // Pets
   struct pets_t
@@ -230,6 +286,15 @@ public:
 
   } talents;
 
+  struct pyro_switch_t
+  {
+      bool dump_state;
+      void reset() { dump_state = 0; }
+      pyro_switch_t() { reset(); }
+  } pyro_switch;
+
+
+
 public:
   int current_arcane_charges;
 
@@ -252,6 +317,7 @@ public:
     spells( spells_t() ),
     spec( specializations_t() ),
     talents( talents_list_t() ),
+    pyro_switch( pyro_switch_t() ),
     current_arcane_charges()
   {
     // Cooldowns
@@ -967,7 +1033,7 @@ public:
     dps_rotation( 0 ),
     dpm_rotation( 0 )
   {
-    may_crit      = ( base_dd_min > 0 ) && ( base_dd_max > 0 );
+    may_crit      = true;
     tick_may_crit = true;
   }
 
@@ -1011,7 +1077,7 @@ public:
 
     if ( p() -> buffs.arcane_power -> check() )
     {
-      double m = 1.0 + p() -> buffs.arcane_power -> data().effectN( 2 ).percent();
+      double m = 1.0 + p() -> buffs.arcane_power -> data().effectN( 2 ).percent() + p() -> perks.improved_arcane_power -> effectN( 1 ).percent();
 
       c *= m;
     }
@@ -1241,6 +1307,7 @@ struct ignite_t : public residual_dot_action< mage_spell_t >
   {
     dot_duration = player -> dbc.spell( 12654 ) -> duration();
     base_tick_time = player -> dbc.spell( 12654 ) -> effectN( 1 ).period();
+    school = SCHOOL_FIRE;
   }
 };
 
@@ -1261,7 +1328,10 @@ struct arcane_barrage_t : public mage_spell_t
   {
     parse_options( NULL, options_str );
 
-    base_aoe_multiplier *= data().effectN( 2 ).percent();
+    if ( p -> perks.improved_arcane_barrage -> ok() )
+        base_aoe_multiplier *= ( p -> perks.improved_arcane_barrage -> effectN( 1 ).percent() + data().effectN( 2 ).percent() );
+    else
+        base_aoe_multiplier *= data().effectN( 2 ).percent();
   }
 
   virtual void execute()
@@ -1744,6 +1814,15 @@ struct counterspell_t : public mage_spell_t
   {
     parse_options( NULL, options_str );
     may_miss = may_crit = false;
+  }
+
+
+  virtual bool ready()
+  {
+    if ( ! target -> debuffs.casting -> check() )
+      return false;
+
+    return mage_spell_t::ready();
   }
 };
 
@@ -3361,7 +3440,42 @@ struct summon_water_elemental_t : public mage_spell_t
   }
 };
 
-// Choose Rotation ==========================================================
+// Combustion Pyroblast Chaining Switch ==========================================================
+
+
+struct start_pyro_chain_t : public action_t
+{
+	start_pyro_chain_t( mage_t* p, const std::string& options_str ):
+		action_t( ACTION_USE, "start_pyro_chain", p )
+	{
+        parse_options( NULL, options_str );
+		trigger_gcd = timespan_t::zero();
+		harmful = false;
+	}
+    virtual void execute()
+	{
+		mage_t* p = debug_cast<mage_t*>( player );
+		p -> pyro_switch.dump_state = true;
+	}
+};
+
+struct stop_pyro_chain_t : public action_t
+{
+	stop_pyro_chain_t( mage_t* p, const std::string& options_str ):
+		action_t( ACTION_USE, "stop_pyro_chain", p )
+	{
+		parse_options( NULL, options_str );
+		trigger_gcd = timespan_t::zero();
+		harmful = false;
+	}
+    virtual void execute()
+	{
+		mage_t* p = debug_cast<mage_t*>( player );
+		p -> pyro_switch.dump_state = false;
+	}
+};
+
+// Choose Rotation =================================================================================
 
 struct choose_rotation_t : public action_t
 {
@@ -3727,6 +3841,8 @@ action_t* mage_t::create_action( const std::string& name,
   if ( name == "blink"             ) return new                   blink_t( this, options_str );
   if ( name == "blizzard"          ) return new                blizzard_t( this, options_str );
   if ( name == "choose_rotation"   ) return new         choose_rotation_t( this, options_str );
+  if ( name == "start_pyro_chain"  ) return new         start_pyro_chain_t( this, options_str );
+  if ( name == "stop_pyro_chain"  ) return new          stop_pyro_chain_t(  this, options_str );
   if ( name == "cold_snap"         ) return new               cold_snap_t( this, options_str );
   if ( name == "combustion"        ) return new              combustion_t( this, options_str );
   if ( name == "cone_of_cold"      ) return new            cone_of_cold_t( this, options_str );
@@ -3845,6 +3961,37 @@ void mage_t::init_spells()
   passives.shatter           = find_specialization_spell( "Shatter" ); // BUG: Doesn't work at present as Shatter isn't tagged as a spec of Frost.
   passives.shatter           = ( find_spell( 12982 ) -> is_level( level ) ) ? find_spell( 12982 ) : spell_data_t::not_found();
 
+  // Perks - Fire 
+  perks.enhanced_inferno_blast               = find_perk_spell( "Enhanced Inferno Blast" );
+  perks.improved_dragons_breath              = find_perk_spell( "Improved Dragon's Breath");
+  perks.improved_combustion                  = find_perk_spell( "Improved combustion" );
+  perks.improved_fireball_and_frostfire_bolt = find_perk_spell( "Improved Fireball and Frostfire Bolt" );
+  perks.enhanced_pyrotechnics                = find_perk_spell( "Enhanced Pyrotechnics" );
+  perks.improved_flamestrike                 = find_perk_spell( "Improved Flamestrike" );
+  perks.improved_inferno_blast               = find_perk_spell( "Improved Inferno Blast" );
+  perks.improved_pyroblast                   = find_perk_spell( "Improved Pyroblast" );
+  perks.improved_scorch                      = find_perk_spell( "Improved Scorch" );
+  // Perks - Arcane
+  perks.enhanced_arcane_blast                = find_perk_spell( "Enhanced Arcane Blast" );
+  perks.enhanced_arcane_missiles             = find_perk_spell( "Enhanced Arcane Missiles" );
+  perks.improved_arcane_barrage              = find_perk_spell( "Improved Arcane Barrage" );
+  perks.improved_arcane_blast                = find_perk_spell( "Improved Arcane Blast" );
+  perks.improved_arcane_explosion            = find_perk_spell( "Improved Arcane Explosion" );
+  perks.improved_arcane_missiles             = find_perk_spell( "Improved Arcane Missiles" );
+  perks.improved_arcane_power                = find_perk_spell( "Improved Arcane Power" );
+  perks.improved_evocation                   = find_perk_spell( "Improved Evocation" );
+  perks.improved_blink                       = find_perk_spell( "Improved Blink" );
+  // Perks - Frost
+  perks.enhanced_fingers_of_frost            = find_perk_spell( "Enhanced Fingers of Frost" );
+  perks.improved_frostbolt                   = find_perk_spell( "Improved Frostbolt" );
+  perks.enhanced_frostbolt                   = find_perk_spell( "Enhanced Frostbolt" );
+  perks.improved_blizzard                    = find_perk_spell( "Improved Blizzard" );
+  perks.improved_frost_nova                  = find_perk_spell( "Improved Frost Nova" );
+  perks.improved_frostfire_bolt              = find_perk_spell( "Improved FrostFire Bolt" );
+  perks.improved_ice_lance                   = find_perk_spell( "Improved Ice Lance" );
+  perks.improved_water_elemental             = find_perk_spell( "Improved Water Elemental" );
+  perks.improved_icy_veins                   = find_perk_spell( "Improved Icy Veins" );
+
   // Spec Spells
   spec.arcane_charge         = find_specialization_spell( "Arcane Charge" );
   spells.arcane_charge_arcane_blast = spec.arcane_charge -> ok() ? find_spell( 36032 ) : spell_data_t::not_found();
@@ -3910,6 +4057,11 @@ void mage_t::init_base_stats()
   diminished_kfactor   = 0.009830;
   diminished_dodge_cap = 0.006650;
   diminished_parry_cap = 0.006650;
+
+  // Reduce fire mage distance to avoid proc munching at high haste
+  // 2 yards was selected through testing with T16H profile
+  if ( specialization() == MAGE_FIRE )
+    base.distance = 20;
 }
 
 // mage_t::init_scaling =====================================================
@@ -3934,7 +4086,8 @@ void mage_t::create_buffs()
   buffs.arcane_charge        = buff_creator_t( this, "arcane_charge", spec.arcane_charge )
                                .max_stack( find_spell( 36032 ) -> max_stacks() )
                                .duration( find_spell( 36032 ) -> duration() );
-  buffs.arcane_missiles      = buff_creator_t( this, "arcane_missiles", find_class_spell( "Arcane Missiles" ) -> ok() ? find_spell( 79683 ) : spell_data_t::not_found() ).chance( 0.3 );
+  buffs.arcane_missiles      = buff_creator_t( this, "arcane_missiles", find_specialization_spell( "Arcane Missiles" ) -> ok() ? find_spell( 79683 ) : spell_data_t::not_found() ).chance( 0.3 );
+
   buffs.arcane_power         = new buffs::arcane_power_t( this );
   buffs.brain_freeze         = buff_creator_t( this, "brain_freeze", spec.brain_freeze )
                                .duration( find_spell( 57761 ) -> duration() )
@@ -3960,8 +4113,8 @@ void mage_t::create_buffs()
                                .duration( timespan_t::from_seconds( 60 ) )
                                .add_invalidate( CACHE_PLAYER_DAMAGE_MULTIPLIER );
 
-  buffs.heating_up           = buff_creator_t( this, "heating_up", find_class_spell( "Pyroblast" ) -> ok() ? find_spell( 48107 ) : spell_data_t::not_found() );
-  buffs.pyroblast            = buff_creator_t( this, "pyroblast",  find_class_spell( "Pyroblast" ) -> ok() ? find_spell( 48108 ) : spell_data_t::not_found() );
+  buffs.heating_up           = buff_creator_t( this, "heating_up", find_specialization_spell( "Pyroblast" ) -> ok() ? find_spell( 48107 ) : spell_data_t::not_found() );
+  buffs.pyroblast            = buff_creator_t( this, "pyroblast",  find_specialization_spell( "Pyroblast" ) -> ok() ? find_spell( 48108 ) : spell_data_t::not_found() );
 
   buffs.tier13_2pc           = stat_buff_creator_t( this, "tier13_2pc" )
                                .spell( find_spell( 105785 ) )
@@ -4182,10 +4335,10 @@ void mage_t::apl_arcane()
 
 void mage_t::apl_fire()
 {
-  std::vector<std::string> item_actions = get_item_actions();
-  std::vector<std::string> racial_actions = get_racial_actions();
+  std::vector<std::string> item_actions       = get_item_actions();
+  std::vector<std::string> racial_actions     = get_racial_actions();
 
-  action_priority_list_t* default_list = get_action_priority_list( "default" );
+  action_priority_list_t* default_list        = get_action_priority_list( "default"            );
 
 
   default_list -> add_action( this, "Counterspell", "if=target.debuff.casting.react" );
@@ -4193,12 +4346,48 @@ void mage_t::apl_fire()
   default_list -> add_action( this, "Time Warp", "if=target.health.pct<25|time>5" );
   //not useful if bloodlust is check in option.
 
+#if 0
+<<<<<<< HEAD
   default_list -> add_talent( this, "Rune of Power", "if=buff.rune_of_power.remains<cast_time" );
+=======
+  default_list -> add_action( this, "Counterspell",
+                              "if=target.debuff.casting.react" );
+  default_list -> add_action( "cancel_buff,name=alter_time,moving=1" );
+  default_list -> add_talent( this, "Cold Snap",
+                              "if=health.pct<30" );
+  default_list -> add_action( this, "Time Warp",
+                              "if=buff.alter_time.down" );
+  default_list -> add_talent( this, "Rune of Power",
+                              "if=buff.rune_of_power.remains<cast_time" );
+  default_list -> add_action( this, "Evocation",
+                              "if=(talent.invocation.enabled&buff.invokers_energy.remains=0)|mana.pct<5" );
+  default_list -> add_action( "cancel_buff,name=alter_time,if=buff.amplified.up&buff.alter_time.up&(trinket.stat.intellect.cooldown_remains-buff.alter_time.remains>109)",
+                              "Cancelaura AT if PBoI procs" );
+>>>>>>> refs/heads/master
 
+<<<<<<< HEAD
   default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&(buff.invokers_energy.down|mana.pct<20)" );
   default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&buff.invokers_energy.remains<6" );
   default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&mana.pct<50,interrupt_if=mana.pct>95&buff.invokers_energy.remains>10" );
   default_list -> add_action( this, "Evocation", "if=mana.pct<20,interrupt_if=mana.pct>95" );
+=======
+  default_list -> add_action( "run_action_list,name=combust_sequence,if=buff.alter_time.up|pyro_chain");
+  default_list -> add_action( "run_action_list,name=init_alter_combust,if=buff.amplified.up&cooldown.alter_time_activate.up&cooldown.combustion.up&(trinket.stat.intellect.cooldown_remains>95|trinket.stat.intellect.cooldown_remains+20>time_to_die)",
+                              "Start AT-POM-Combustion combo if CDs are up; Wait for trinket proc if player has PBoI" );
+  default_list -> add_action( "run_action_list,name=init_alter_combust,if=buff.amplified.down&cooldown.alter_time_activate.up&cooldown.combustion.up" );
+  default_list -> add_action( "run_action_list,name=init_pom_combust,if=buff.amplified.up&cooldown.alter_time_activate.remains>45&cooldown.combustion.up&cooldown.presence_of_mind.up&(trinket.stat.intellect.cooldown_remains>95|trinket.stat.intellect.cooldown_remains+20>time_to_die)",
+                              "Start regular POM-Combustion combo if CDs are up; Wait for trinket proc if player has PBoI" );
+  default_list -> add_action( "run_action_list,name=init_pom_combust,if=buff.amplified.down&cooldown.alter_time_activate.remains>45&cooldown.combustion.up&cooldown.presence_of_mind.up" );
+
+  default_list -> add_talent( this, "Rune of Power",
+                              "if=buff.alter_time.down&buff.rune_of_power.remains<4*action.fireball.execute_time&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)",
+                              "Cast RoP/Evoc/MI only when player does not have both HU, Pyro proc and fireball mid flight - this causes Proc munching" );
+  default_list -> add_action( this, "Evocation",
+                              "if=talent.invocation.enabled&buff.alter_time.down&buff.invokers_energy.remains<4*action.fireball.execute_time&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)" );
+  default_list -> add_action( this, "Mirror Image",
+                              "if=buff.alter_time.down&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)" );
+>>>>>>> refs/heads/master
+#endif
 
   for( size_t i = 0; i < racial_actions.size(); i++ )
     default_list -> add_action( racial_actions[i] );
@@ -4244,17 +4433,25 @@ void mage_t::apl_frost()
   default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&cooldown.icy_veins.remains=0&buff.invokers_energy.remains<20" );
   default_list -> add_action( this, "Evocation", "if=!talent.invocation.enabled&mana.pct<50,interrupt_if=mana.pct>95" );
   default_list -> add_action( this, "Mirror Image" );
-  default_list -> add_action( this, "Frozen Orb", "if=set_bonus.tier16_2pc_caster" );
-  default_list -> add_action( this, "Icy Veins", "if=time_to_bloodlust>180&((buff.brain_freeze.react|buff.fingers_of_frost.react)|target.time_to_die<22),moving=0" );
+  default_list -> add_action( this, "Frozen Orb", "if=buff.fingers_of_frost.stack<2" );
+  default_list -> add_action( this, "Icy Veins", "if=(time_to_bloodlust>160&(buff.brain_freeze.react|buff.fingers_of_frost.react))|target.time_to_die<22,moving=0" );
 
   for( size_t i = 0; i < racial_actions.size(); i++ )
-    default_list -> add_action( racial_actions[i] + ",if=buff.icy_veins.up|target.time_to_die<18" );
+    default_list -> add_action( racial_actions[i] + ",sync=alter_time_activate,if=buff.icy_veins.up|target.time_to_die<18" );
 
-  default_list -> add_action( "jade_serpent_potion,if=buff.icy_veins.up|target.time_to_die<45" );
-  default_list -> add_talent( this, "Presence of Mind", "if=buff.icy_veins.up|cooldown.icy_veins.remains>15|target.time_to_die<15" );
+  default_list -> add_action( "jade_serpent_potion,sync=alter_time_activate,if=buff.icy_veins.up|target.time_to_die<45" );
+  default_list -> add_talent( this, "Presence of Mind", "sync=alter_time_activate,if=talent.presence_of_mind.enabled" );
 
+#if 0
   for( size_t i = 0; i < item_actions.size(); i++ )
+<<<<<<< HEAD
     default_list -> add_action( item_actions[i] );
+=======
+    default_list -> add_action( item_actions[i] + ",sync=alter_time_activate,if=buff.alter_time.down" );
+
+  default_list -> add_action( this, "Alter Time", "if=buff.alter_time.down&buff.icy_veins.up&trinket.stat.intellect.cooldown_remains>25" );
+  default_list -> add_action( this, "Alter Time", "if=buff.alter_time.down&buff.icy_veins.up&buff.amplified.down" );
+>>>>>>> refs/heads/master
 
   for( size_t i = 0; i < item_actions.size(); i++ )
   {
@@ -4264,11 +4461,19 @@ void mage_t::apl_frost()
   }
 
   default_list -> add_action( this, "Flamestrike", "if=active_enemies>=5" );
+<<<<<<< HEAD
+=======
+  default_list -> add_action( this, "Fire Blast", "if=time_to_die<action.ice_lance.travel_time" );
+  default_list -> add_action( this, "Frostfire Bolt", "if=buff.alter_time.up&buff.brain_freeze.up" );
+  default_list -> add_action( this, "Frostfire Bolt", "if=buff.brain_freeze.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time" );
+  default_list -> add_talent( this, "Nether Tempest", "cycle_targets=1,if=(!ticking|remains<tick_time)&target.time_to_die>6" );
+  default_list -> add_talent( this, "Living Bomb", "cycle_targets=1,if=(!ticking|remains<tick_time)&target.time_to_die>tick_time*3" );
+>>>>>>> refs/heads/master
+#endif
   default_list -> add_talent( this, "Frost Bomb", "if=target.time_to_die>cast_time+tick_time" );
-  default_list -> add_action( this, "Frostfire Bolt", "if=buff.brain_freeze.react&cooldown.icy_veins.remains>2" );
-  default_list -> add_action( this, "Ice Lance", "if=buff.frozen_thoughts.react&buff.fingers_of_frost.up" );
-  default_list -> add_action( this, "Ice Lance", "if=buff.fingers_of_frost.up&(buff.fingers_of_frost.remains<2|(buff.fingers_of_frost.stack>1&cooldown.icy_veins.remains>2))" );
-  default_list -> add_action( this, "Ice Lance" "if=!set_bonus.tier16_2pc_caster&buff.fingers_of_frost.react&cooldown.icy_veins.remains>2" );
+  default_list -> add_action( this, "Ice Lance", "if=buff.alter_time.up&buff.fingers_of_frost.up" );
+  default_list -> add_action( this, "Ice Lance", "if=buff.fingers_of_frost.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time" );
+  default_list -> add_talent( this, "Presence of Mind", "if=cooldown.alter_time_activate.remains>0");
   default_list -> add_action( this, "Frostbolt" );
   default_list -> add_talent( this, "Ice Floes", "moving=1" );
   default_list -> add_action( this, "Ice Lance", "moving=1" );
@@ -4418,6 +4623,7 @@ void mage_t::reset()
   core_event_t::cancel( icicle_event );
   active_living_bomb_targets = 0;
   last_bomb_target = 0;
+  pyro_switch.reset();
 }
 
 // mage_t::regen  ===========================================================
@@ -4513,6 +4719,8 @@ expr_t* mage_t::create_expression( action_t* a, const std::string& name_str )
       expr_t( n ), mage( m ) {}
   };
 
+
+
   struct rotation_expr_t : public mage_expr_t
   {
     mage_rotation_e rt;
@@ -4561,6 +4769,21 @@ expr_t* mage_t::create_expression( action_t* a, const std::string& name_str )
       }
     };
     return new regen_mps_expr_t( *this );
+  }
+
+
+  if ( name_str == "pyro_chain" )
+  {
+    struct pyro_chain_expr_t : public mage_expr_t
+    {
+	  mage_t* mage;
+      pyro_chain_expr_t( mage_t& m ) : mage_expr_t( "pyro_chain", m ), mage( &m )
+      {}
+      virtual double evaluate()
+	  { return mage -> pyro_switch.dump_state; }
+    };
+
+    return new pyro_chain_expr_t( *this );
   }
 
   if ( util::str_compare_ci( name_str, "shooting_icicles" ) )

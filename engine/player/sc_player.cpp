@@ -2592,7 +2592,7 @@ double player_t::composite_multistrike() const
   double cm = composite_multistrike_rating() / current.rating.multistrike;
 
   if ( ! is_pet() && ! is_enemy() && sim -> auras.multistrike -> check() )
-    cm *= 1.0 + sim -> auras.multistrike -> value();
+    cm += sim -> auras.multistrike -> value();
 
   return cm;
 }
@@ -2893,7 +2893,7 @@ double player_t::composite_rating( rating_e rating ) const
 
 // player_t::composite_player_vulnerability =================================
 
-double player_t::composite_player_vulnerability( school_e school ) const
+double player_t::composite_player_vulnerability( school_e /* school */ ) const
 {
   double m = 1.0;
 
@@ -3476,6 +3476,9 @@ void player_t::reset()
   item_cooldown.reset( false );
 
   incoming_damage.clear();
+
+  for( size_t i = 0, end = variables.size(); i < end; i++ )
+    variables[ i ].reset();
 }
 
 // player_t::trigger_ready ==================================================
@@ -4701,8 +4704,8 @@ void player_t::assess_damage( school_e school,
     proc_types pt = s -> proc_type();
     proc_types2 pt2 = s -> execute_proc_type2();
     // For incoming landed abilities, get the impact type for the proc.
-    if ( pt2 == PROC2_LANDED )
-      pt2 = s -> impact_proc_type2();
+    //if ( pt2 == PROC2_LANDED )
+    //  pt2 = s -> impact_proc_type2();
 
     // On damage/heal in. Proc flags are arranged as such that the "incoming"
     // version of the primary proc flag is always follows the outgoing version.
@@ -5169,6 +5172,171 @@ struct stop_moving_t : public action_t
   virtual bool ready()
   {
     if ( ! player -> buffs.self_movement -> check() )
+      return false;
+
+    return action_t::ready();
+  }
+};
+
+struct variable_t : public action_t
+{
+  action_var_e operation;
+  action_variable_t* var;
+  expr_t* value_expression;
+
+  variable_t( player_t* player, const std::string& options_str ) :
+    action_t( ACTION_OTHER, "variable", player ),
+    operation( OPERATION_SET ), var( 0 ), value_expression( 0 )
+  {
+    quiet = true;
+    harmful = proc = callbacks = may_miss = may_crit = may_block = may_parry = may_dodge = false;
+    trigger_gcd = timespan_t::zero();
+
+    std::string name_;
+    std::string value_;
+    std::string operation_;
+    double default_ = 0;
+    timespan_t delay_;
+
+    option_t options[] =
+    {
+      opt_string( "name", name_ ),
+      opt_string( "value", value_ ),
+      opt_string( "op", operation_ ),
+      opt_float( "default", default_ ),
+      opt_timespan( "delay", delay_ ),
+      opt_null()
+    };
+    parse_options( options, options_str );
+
+    if ( name_.empty() || operation_.empty() )
+    {
+      sim -> errorf( "Player %s unnamed 'variable' action used, or no operation given", player -> name() );
+      background = true;
+      return;
+    }
+
+    // Printing needs a delay, otherwise the action list will not progress
+    if ( operation == OPERATION_PRINT && delay_ == timespan_t::zero() )
+      delay_ = timespan_t::from_seconds( 1.0 );
+
+    // Figure out operation
+    if ( util::str_compare_ci( operation_, "set" ) )
+      operation = OPERATION_SET;
+    else if ( util::str_compare_ci( operation_, "print" ) )
+      operation = OPERATION_PRINT;
+    else if ( util::str_compare_ci( operation_, "reset" ) )
+      operation = OPERATION_RESET;
+    else if ( util::str_compare_ci( operation_, "add" ) )
+      operation = OPERATION_ADD;
+    else if ( util::str_compare_ci( operation_, "sub" ) )
+      operation = OPERATION_SUB;
+    else
+    {
+      sim -> errorf( "Player %s unknown operation '%s' given for variable, valid values are 'set', 'print', and 'reset'.", player -> name(), operation_.c_str() );
+      background = true;
+      return;
+    }
+
+    // Evaluate value expression
+    if ( operation == OPERATION_SET || operation == OPERATION_ADD )
+    {
+      if ( value_.empty() )
+      {
+        sim -> errorf( "Player %s no value expression given for variable '%s'", player -> name(), name_.c_str() );
+        background = true;
+        return;
+      }
+
+      value_expression = expr_t::parse( this, value_ );
+      if ( ! value_expression )
+      {
+        sim -> errorf( "Player %s unable to parse 'variable' value '%s'", player -> name(), value_.c_str() );
+        background = true;
+        return;
+      }
+    }
+
+    // Add a delay
+    if ( delay_ > timespan_t::zero() )
+    {
+      std::string cooldown_name = "variable_actor";
+      cooldown_name += util::to_string( player -> index );
+      cooldown_name += "_";
+      cooldown_name += name_;
+
+      cooldown = player -> get_cooldown( cooldown_name );
+      cooldown -> duration = delay_;
+    }
+
+    // Find the variable
+    for ( size_t i = 0, end = player -> variables.size(); i < end; i++ )
+    {
+      if ( util::str_compare_ci( player -> variables[ i ].name_, name_ ) )
+      {
+        var = &( player -> variables[ i ] );
+        break;
+      }
+    }
+
+    if ( ! var )
+    {
+      player -> variables.push_back( action_variable_t( name_, default_ ) );
+      var = &( player -> variables.back() );
+    }
+  }
+
+  result_e calculate_result( action_state_t* )
+  { return RESULT_HIT; }
+
+  block_result_e calculate_block_result( action_state_t* )
+  { return BLOCK_RESULT_UNBLOCKED; }
+
+  void execute()
+  {
+    action_t::execute();
+
+    switch ( operation )
+    {
+      case OPERATION_SET:
+        var -> current_value_ = value_expression -> eval();
+        break;
+      case OPERATION_ADD:
+        var -> current_value_ += value_expression -> eval();
+        break;
+      case OPERATION_SUB:
+        var -> current_value_ -= value_expression -> eval();
+        break;
+      case OPERATION_PRINT:
+        // Only spit out prints in main thread
+        if ( sim -> parent == 0 )
+          std::cout << "actor=" << player -> name_str << " time=" << sim -> current_time.total_seconds() << " iteration=" << sim -> current_iteration << " variable=" << var -> name_.c_str() << " value=" << var -> current_value_ << std::endl;
+        break;
+      case OPERATION_RESET:
+        var -> reset();
+        break;
+      default:
+        assert( 0 );
+        break;
+    }
+  }
+
+  bool ready()
+  {
+    // For state change operations, return false if the variable would be
+    // unchanged, allows easier way to handle infinite action list issues due
+    // to time not progressing
+    if ( value_expression )
+    {
+      if ( operation == OPERATION_SET && value_expression -> eval() == var -> current_value_ )
+        return false;
+      else if ( ( operation == OPERATION_SUB || operation == OPERATION_ADD ) && value_expression -> eval() == 0 )
+        return false;
+    }
+
+    // For reset, only perform reset if the variable is not at default value.
+    // See above why.
+    if ( operation == OPERATION_RESET && var -> current_value_ == var -> default_ )
       return false;
 
     return action_t::ready();
@@ -6025,6 +6193,7 @@ action_t* player_t::create_action( const std::string& name,
   if ( name == "wait"               ) return new         wait_fixed_t( this, options_str );
   if ( name == "wait_until_ready"   ) return new   wait_until_ready_t( this, options_str );
   if ( name == "pool_resource"      ) return new      pool_resource_t( this, options_str );
+  //if ( name == "variable"           ) return new           variable_t( this, options_str );
 
   return consumable::create_action( this, name, options_str );
 }
@@ -6984,6 +7153,39 @@ expr_t* player_t::create_expression( action_t* a,
 
   std::vector<std::string> splits = util::string_split( name_str, "." );
 
+  if ( splits[ 0 ] == "variable" && splits.size() == 2 )
+  {
+    struct variable_expr_t : public expr_t
+    {
+      player_t* player_;
+      const action_variable_t* var_;
+
+      variable_expr_t( player_t* p, const std::string& name ) :
+        expr_t( "variable" ), player_( p ), var_( 0 )
+      {
+        for ( size_t i = 0, end = player_ -> variables.size(); i < end; i++ )
+        {
+          if ( util::str_compare_ci( name, player_ -> variables[ i ].name_ ) )
+          {
+            var_ = &( player_ -> variables[ i ] );
+            break;
+          }
+        }
+      }
+
+      double evaluate()
+      { return var_ -> current_value_; }
+    };
+
+    variable_expr_t* expr = new variable_expr_t( this, splits[ 1 ] );
+    if ( ! expr -> var_ )
+    {
+      sim -> errorf( "Player %s no variable named '%s' found", name(), splits[ 1 ].c_str() );
+      delete expr;
+    }
+    else
+      return expr;
+  }
   // trinket.[12.].(has_|)(stacking_|)proc.<stat>.<buff_expr>
   if ( splits[ 0 ] == "trinket" && splits.size() >= 3 )
   {
@@ -9765,63 +9967,17 @@ std::string player_talent_points_t::to_string() const
 
 namespace resolve {
 
-// Resolve Event List =====================================================
-// This is the list of the damage events that have occurred. Used every time Resolve is updated
-
-struct manager_t::damage_event_list_t
-{
-  damage_event_list_t( const player_t* p ) :
-    event_list(),
-    myself( p )
-  { }
-
-  // called after each iteration in player_t::resolve_stop()
-  void reset()
-  { event_list.clear(); }
-
-  /* Add a damage event to the Resolve Damage Event list
-   */
-  void add( const player_t* actor, double amount, timespan_t current_time )
-  {
-    // don't count friendly fire
-    if ( actor == myself )
-      return;
-
-    assert( actor -> actor_spawn_index >= 0 && "Trying to register resolve damage event from a dead player! Something is seriously broken in player_t::arise/demise." );
-
-    // Add a new entry
-    event_entry_t e;
-    e.actor_spawn_index = actor -> actor_spawn_index;
-    e.event_amount = amount;
-    e.event_time = current_time;
-
-    event_list.push_back( e );
-  }
-
-  // structure that contains the relevant information for each actor entry in the list
-  struct event_entry_t {
-    int actor_spawn_index;
-    double event_amount;
-    timespan_t event_time;
-
-  };
-  typedef std::vector<event_entry_t> list_t;
-  list_t event_list; // vector of actor entries
-  const player_t* myself; // not sure this is strictly necessary, intended to nullify self-veng, but an is_enemy(actor) call might be better
-};
-
 // Resolve Diminishing Returns List =====================================================
 // this is the sorted list of actors used to determine Resolve diminishing returns.
 // sorted according to auto-attack DPS
 
 struct manager_t::diminishing_returns_list_t
 {
-  diminishing_returns_list_t( const player_t* p ) :
-    myself( p )
+  diminishing_returns_list_t() :
+    actor_list()
   { }
 
-  /* Reset the diminishing return list
-   */
+  // Reset the diminishing return list
   void reset()
   { actor_list.clear(); }
 
@@ -9836,13 +9992,9 @@ struct manager_t::diminishing_returns_list_t
     return as<int>(std::distance( actor_list.begin(), found ) + 1);
   }
 
-  /* Add average auto-attack dps values to the Diminishing Return list
-   */
+  // Add average auto-attack dps values to the Diminishing Return list. Update every time something is added.
   void add( const player_t* actor, double raw_dps, timespan_t current_time )
   {
-    if ( actor == myself )
-      return;
-
     std::vector<actor_entry_t>::iterator found = find_actor( actor -> actor_spawn_index );
 
     if ( found != actor_list.end() )
@@ -9860,13 +10012,16 @@ struct manager_t::diminishing_returns_list_t
 
       actor_list.push_back( a );
     }
+
+    // sort the list every time we add an entry
+    update( current_time );
   }
 
   /* Update the Diminishing Return list by purging old entries and sorting it by DPS
    */
-  void update_list( timespan_t current_time )
+  void update( timespan_t current_time )
   {
-    // Purge any actors that haven't hit you in 10 seconds or more
+    // Purge any actors that haven't hit you in 5 seconds or more
     actor_list.erase( std::remove_if( actor_list.begin(), actor_list.end(), was_inactive( current_time ) ), actor_list.end() );
 
     // Sort the list by DPS
@@ -9879,23 +10034,25 @@ private:
     double raw_dps;
     timespan_t last_attack;
   };
+
   std::vector<actor_entry_t> actor_list; // vector of actor entries
-  const player_t* myself; // not sure this is strictly necessary, intended to nullify self-veng, but an is_enemy(actor) call might be better
 
   // comparator function for sorting the list
   static bool compare_DPS( const actor_entry_t &a, const actor_entry_t &b )
   { return a.raw_dps > b.raw_dps; }
 
   // comparator functor for purging inactive players
+  // http://us.battle.net/wow/en/forum/topic/13087818929?page=6#105
   struct was_inactive {
     was_inactive( const timespan_t& current_time ) :
       current_time( current_time )
     {}
     bool operator()( const actor_entry_t& a ) const
-    { return a.last_attack + timespan_t::from_seconds( 10.0 ) < current_time; } // true if last attack is not more than 10 seconds ago
+    { return a.last_attack + timespan_t::from_seconds( 5.0 ) < current_time; } // true if last attack is not more than 10 seconds ago
     const timespan_t& current_time;
   };
 
+  // method for finding actor - used while cycling through list
   std::vector<actor_entry_t>::iterator find_actor( int actor_spawn_index )
   {
     std::vector<actor_entry_t>::iterator iter = actor_list.begin();
@@ -9907,7 +10064,7 @@ private:
     return iter;
   }
 
-  // update_actor_entry
+  // method to update_actor_entry
   void update_actor_entry( actor_entry_t& a, double raw_dps, timespan_t last_attack )
   {
       a.raw_dps = raw_dps;
@@ -9915,6 +10072,51 @@ private:
   }
 };
 
+// Resolve Event List =====================================================
+// This is the list of the damage events that have occurred. Used every time Resolve is updated
+
+struct manager_t::damage_event_list_t
+{
+  damage_event_list_t( manager_t& rm ) :
+    event_list(),
+    resolve_manager( rm )
+  { }
+
+  // called after each iteration in player_t::resolve_stop()
+  void reset()
+  { event_list.clear(); }
+
+  /* Add a damage event to the Resolve Damage Event list
+   */
+  void add( const player_t* actor, double amount, timespan_t current_time )
+  {
+    assert( actor -> actor_spawn_index >= 0 && "Trying to register resolve damage event from a dead player! Something is seriously broken in player_t::arise/demise." );
+    
+    // apply diminishing returns - done at the time of the event, never recalculated
+    // see http://us.battle.net/wow/en/forum/topic/13087818929?page=6#105
+    int rank = resolve_manager.get_diminsihing_return_rank( actor -> actor_spawn_index );
+    amount /= rank;
+
+    // Add a new entry
+    event_entry_t e;
+    e.event_amount = amount;
+    e.event_time = current_time;
+
+    event_list.push_back( e );
+  }
+
+  // structure that contains the relevant information for each actor entry in the list
+  struct event_entry_t {
+    double event_amount;
+    timespan_t event_time;
+
+  };
+  typedef std::vector<event_entry_t> list_t;
+  list_t event_list; // vector of actor entries
+  manager_t& resolve_manager;
+};
+
+// periodic update event for resolve
 struct manager_t::update_event_t final : public event_t
 {
   update_event_t( player_t& p ) :
@@ -9935,8 +10137,8 @@ manager_t::manager_t( player_t& p ) :
     _player( p ),
     _update_event( nullptr ),
     _started( false ),
-    _diminishing_return_list( new diminishing_returns_list_t( &p ) ),
-    _damage_list( new damage_event_list_t( &p ) )
+    _diminishing_return_list( new diminishing_returns_list_t() ),
+    _damage_list( new damage_event_list_t( *this ) )
 {
 
 }
@@ -9991,8 +10193,6 @@ void manager_t::update()
   const damage_event_list_t::list_t& list= _damage_list -> event_list;
   if ( ! list.empty() )
   {
-    _diminishing_return_list -> update_list( _player.sim -> current_time );
-
     damage_event_list_t::list_t::const_reverse_iterator i, end;
     for ( i = list.rbegin(), end = list.rend(); i != end; ++i )
     {
@@ -10001,17 +10201,13 @@ void manager_t::update()
         break;
 
       // temp variable for current event's contribution
-      // note that this already includes the 2.5x multiplier for spell damage and the normalization
-      // by player max health (all of that done in action_t::update_resolve() )
+      // note that this already includes the 2.5x multiplier for spell damage, diminishing returns,
+      // and the normalization by player max health. See action_t::update_resolve() and damage_event_list_t::add()
       double contribution = (*i).event_amount;
 
       // apply time-based decay
       double delta_t = ( _player.sim -> current_time - (*i).event_time ).total_seconds();
       contribution *= 2.0 * ( 10.0 - delta_t ) / 10.0;
-
-      // apply diminishing returns
-      int rank = _diminishing_return_list -> get_diminishing_return_factor( (*i).actor_spawn_index );
-      contribution /= rank;
 
       // add to existing amount
       new_amount += contribution;
@@ -10039,8 +10235,14 @@ void manager_t::add_diminishing_return_entry( const player_t* actor, double raw_
   _diminishing_return_list -> add( actor, raw_dps, current_time );
 }
 
+int manager_t::get_diminsihing_return_rank( int actor_spawn_index )
+{
+  return _diminishing_return_list -> get_diminishing_return_factor( actor_spawn_index );
+}
+
 void manager_t::add_damage_event( const player_t* actor, double amount, timespan_t current_time )
 {
+
   _damage_list -> add( actor, amount, current_time );
 }
 

@@ -929,14 +929,22 @@ enum snapshot_state_e
   STATE_TGT_CRIT       = 0x000100,
   STATE_TGT_MUL_DA     = 0x000200,
   STATE_TGT_MUL_TA     = 0x000400,
+  STATE_RESOLVE        = 0x000800,
 
-  STATE_USER_1         = 0x000800,
-  STATE_USER_2         = 0x001000,
-  STATE_USER_3         = 0x002000,
-  STATE_USER_4         = 0x004000,
+  STATE_USER_1         = 0x001000,
+  STATE_USER_2         = 0x002000,
+  STATE_USER_3         = 0x004000,
+  STATE_USER_4         = 0x008000,
 
-  STATE_TGT_MITG_DA    = 0x008000,
-  STATE_TGT_MITG_TA    = 0x010000,
+  STATE_TGT_MITG_DA    = 0x010000,
+  STATE_TGT_MITG_TA    = 0x020000,
+
+  // No multiplier herlper, use in action_t::init() (after parent init) by
+  // issuing snapshot_flags &= STATE_NO_MULTIPLIER (and/or update_flags &=
+  // STATE_NO_MULTIPLIER if a dot). This disables all multipliers, including
+  // versatility, resolve, and any/all persistent multipliers the action would
+  // use.
+  STATE_NO_MULTIPLIER  = ~( STATE_MUL_DA | STATE_MUL_TA | STATE_VERSATILITY | STATE_MUL_PERSISTENT | STATE_TGT_MUL_DA | STATE_TGT_MUL_TA | STATE_RESOLVE )
 };
 
 enum ready_e
@@ -3986,6 +3994,7 @@ struct manager_t
   bool is_started() const
   { return _started; }
   void add_diminishing_return_entry( const player_t* actor, double raw_dps, timespan_t current_time );
+  int get_diminsihing_return_rank( int actor_spawn_index );
   void add_damage_event( const player_t* actor, double amount, timespan_t current_time );
 private:
   struct update_event_t;
@@ -4019,6 +4028,32 @@ public:
 };
 
 // Player ===================================================================
+
+enum action_var_e
+{
+  OPERATION_NONE = -1,
+  OPERATION_SET,
+  OPERATION_PRINT,
+  OPERATION_RESET,
+  OPERATION_ADD,
+  OPERATION_SUB
+};
+
+struct action_variable_t
+{
+  std::string name_;
+  double current_value_, default_;
+
+  action_variable_t( const std::string& name, double def = 0 ) :
+    name_( name ), default_( def )
+  { }
+
+  double value() const
+  { return current_value_; }
+
+  void reset()
+  { current_value_ = default_; }
+};
 
 struct player_t : public actor_t
 {
@@ -4773,7 +4808,7 @@ struct player_t : public actor_t
 
   rng_t& rng() { return sim -> rng(); }
   rng_t& rng() const { return sim -> rng(); }
-
+  std::vector<action_variable_t> variables;
   // Add 1ms of time to ensure that we finish this run. This is necessary due 
   // to the millisecond accuracy in our timing system.
   virtual timespan_t time_to_move() const
@@ -5163,6 +5198,7 @@ struct action_state_t : public noncopyable
   double          spell_power;
   double          multistrike;
   // Snapshotted multipliers
+  double          resolve;
   double          versatility;
   double          da_multiplier;
   double          ta_multiplier;
@@ -5197,10 +5233,10 @@ struct action_state_t : public noncopyable
   { return versatility; }
 
   virtual double composite_da_multiplier() const
-  { return da_multiplier * persistent_multiplier * target_da_multiplier * versatility; }
+  { return da_multiplier * persistent_multiplier * target_da_multiplier * versatility * resolve; }
 
   virtual double composite_ta_multiplier() const
-  { return ta_multiplier * persistent_multiplier * target_ta_multiplier * versatility; }
+  { return ta_multiplier * persistent_multiplier * target_ta_multiplier * versatility * resolve; }
 
   virtual double composite_target_mitigation_da_multiplier() const
   { return target_mitigation_da_multiplier; }
@@ -5510,6 +5546,7 @@ public:
   virtual double composite_multistrike() const { return player -> cache.multistrike(); }
   virtual double composite_readiness() const { return player -> cache.readiness(); }
   virtual double composite_versatility( const action_state_t* ) const { return 1.0; }
+  virtual double composite_resolve( const action_state_t* ) const { return 1.0; }
 
   // the direct amount multiplier due to debuffs on the target
   virtual double composite_target_da_multiplier( player_t* target ) const { return composite_target_multiplier( target ); }
@@ -5747,10 +5784,6 @@ public:
            player -> cache.player_heal_multiplier( s ) *
            player -> composite_player_dh_multiplier( get_school() );
 
-    // apply resolve multiplier
-    if ( player -> resolve_manager.is_started() && s -> target == player )
-      m *= 1.0 + player -> buffs.resolve -> current_value / 100.0;
-
     return m;
   }
 
@@ -5760,10 +5793,6 @@ public:
            player -> cache.player_heal_multiplier( s ) *
            player -> composite_player_th_multiplier( get_school() );
 
-    // apply resolve multiplier
-    if ( player -> resolve_manager.is_started() && s -> target == player )
-      m *= 1.0 + player -> buffs.resolve -> current_value / 100.0;
-
     return m;
   }
 
@@ -5772,6 +5801,16 @@ public:
 
   virtual double composite_versatility( const action_state_t* state ) const
   { return spell_base_t::composite_versatility( state ) + player -> cache.heal_versatility(); }
+
+  virtual double composite_resolve( const action_state_t* state ) const
+  {
+    double m = 1.0;
+
+    if ( player -> resolve_manager.is_started() && state -> target == player )
+      m += player -> buffs.resolve -> current_value / 100.0;
+
+    return m;
+  }
 
   virtual expr_t* create_expression( const std::string& name );
 };
@@ -5794,10 +5833,6 @@ struct absorb_t : public spell_base_t
     double m = action_multiplier() * action_da_multiplier() *
            player -> composite_player_absorb_multiplier( s );
 
-    // apply resolve multiplier
-    if ( player -> resolve_manager.is_started() && s -> target == player )
-      m *= 1.0 + player -> buffs.resolve -> current_value / 100.0;
-
     return m;
   }
   virtual double composite_ta_multiplier( const action_state_t* s ) const
@@ -5805,14 +5840,20 @@ struct absorb_t : public spell_base_t
     double m = action_multiplier() * action_ta_multiplier() *
            player -> composite_player_absorb_multiplier( s );
 
-    // apply resolve multiplier
-    if ( player -> resolve_manager.is_started() && s -> target == player )
-      m *= 1.0 + player -> buffs.resolve -> current_value / 100.0;
-
     return m;
   }
   virtual double composite_versatility( const action_state_t* state ) const
   { return spell_base_t::composite_versatility( state ) + player -> cache.heal_versatility(); }
+
+  virtual double composite_resolve( const action_state_t* state ) const
+  {
+    double m = 1.0;
+
+    if ( player -> resolve_manager.is_started() && state -> target == player )
+      m += player -> buffs.resolve -> current_value / 100.0;
+
+    return m;
+  }
 
 };
 

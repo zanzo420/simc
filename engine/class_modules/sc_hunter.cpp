@@ -197,7 +197,9 @@ public:
     const spell_data_t* critical_strikes;
 
     // Shared
-    //const spell_data_t* cobra_shot;
+    const spell_data_t* crit_attunement;
+    const spell_data_t* multistrike_attunement;
+    const spell_data_t* mastery_attunement;
 
     // Beast Mastery
     // const spell_data_t* kill_command;
@@ -335,6 +337,7 @@ public:
   virtual double    composite_melee_speed() const;
   virtual double    ranged_haste_multiplier() const;
   virtual double    ranged_speed_multiplier() const;
+  virtual double    composite_rating_multiplier( rating_e rating ) const;
   virtual double    composite_player_multiplier( school_e school ) const;
   virtual double    matching_gear_multiplier( attribute_e attr ) const;
   virtual void      invalidate_cache( cache_e );
@@ -1717,17 +1720,32 @@ struct start_attack_t : public hunter_ranged_attack_t
 
 // Aimed Shot ===============================================================
 
-struct aimed_shot_base_t : public hunter_ranged_attack_t
+struct aimed_shot_t : public hunter_ranged_attack_t
 {
-  aimed_shot_base_t( const std::string& n, hunter_t* p,
-                     const spell_data_t* s = spell_data_t::nil() ) 
-    : hunter_ranged_attack_t( n, p, s )
+  aimed_shot_t( hunter_t* p, const std::string& options_str ) :
+    hunter_ranged_attack_t( "aimed_shot", p, p -> find_class_spell( "Aimed Shot" ) )
   {
     check_spec( HUNTER_MARKSMANSHIP );
 
+    parse_options( NULL, options_str );
+
     base_multiplier *= 1.0 + p -> perks.improved_aimed_shot -> effectN( 1 ).percent();
   }
+  
+  virtual double cost() const
+  {
+   return thrill_discount( hunter_ranged_attack_t::cost() );
+  }
 
+  virtual timespan_t execute_time() const
+  {
+    timespan_t cast_time = hunter_ranged_attack_t::execute_time();
+    if ( p() -> buffs.tier16_4pc_mm_keen_eye -> check() )
+      cast_time *= 1.0 + p() -> buffs.tier16_4pc_mm_keen_eye -> data().effectN( 1 ).percent();
+
+    return cast_time;
+  }
+  
   virtual double composite_target_crit( player_t* t ) const
   {
     double cc = hunter_ranged_attack_t::composite_target_crit( t );
@@ -1745,60 +1763,6 @@ struct aimed_shot_base_t : public hunter_ranged_attack_t
         p() -> perks.enhanced_aimed_shot -> effectN( 1 ).resource( RESOURCE_FOCUS ),
         p() -> gains.aimed_shot );
     }
-  }
-};
-
-struct aimed_shot_t : public aimed_shot_base_t
-{
-
-  // Aimed Shot - Master Marksman ===========================================
-
-  struct aimed_shot_mm_t : public aimed_shot_base_t
-  {
-    aimed_shot_mm_t( hunter_t* p ) :
-      aimed_shot_base_t( "aimed_shot_mm", p, p -> find_spell( 82928 ) )
-    {
-      // Don't know why these values aren't 0 in the database.
-      base_execute_time = timespan_t::zero();
-    }
-
-    virtual void execute()
-    {
-      hunter_ranged_attack_t::execute();
-
-      if ( p() -> sets.has_set_bonus( SET_T16_4PC_MELEE ) )
-        p() -> buffs.tier16_4pc_mm_keen_eye -> trigger();
-
-      if ( result_is_hit( execute_state -> result ) )
-        trigger_tier15_4pc_melee( p() -> procs.tier15_4pc_melee_aimed_shot, p() -> action_lightning_arrow_aimed_shot );
-    }
-  };
-
-  aimed_shot_mm_t* as_mm;
-
-  aimed_shot_t( hunter_t* p, const std::string& options_str ) :
-    aimed_shot_base_t( "aimed_shot", p, p -> find_class_spell( "Aimed Shot" ) ),
-    as_mm( new aimed_shot_mm_t( p ) )
-  {
-    parse_options( NULL, options_str );
-
-    as_mm -> background = true;
-  }
-  
-  virtual double cost() const
-  {
-   return thrill_discount( hunter_ranged_attack_t::cost() );
-  }
-
-  virtual timespan_t execute_time() const
-  {
-    timespan_t cast_time = hunter_ranged_attack_t::execute_time();
-    if ( p() -> buffs.tier16_4pc_mm_keen_eye -> check() )
-    {
-      cast_time *= 1.0 + p() -> buffs.tier16_4pc_mm_keen_eye -> data().effectN( 1 ).percent();
-    }
-
-    return cast_time;
   }
 
   virtual void execute()
@@ -3212,6 +3176,12 @@ void hunter_t::init_spells()
   glyphs.tame_beast          = find_glyph_spell( "Glyph of Tame Beast"  );
   glyphs.the_cheetah         = find_glyph_spell( "Glyph of the Cheetah"  );
 
+  // Attunments
+  specs.crit_attunement       = find_specialization_spell( "Critical Strike Attunement" );
+  specs.mastery_attunement    = find_specialization_spell( "Mastery Attunement" );
+  specs.multistrike_attunement = find_specialization_spell( "Multistrike Attunement" );
+
+  // Spec spells
   specs.critical_strikes     = find_spell( 157443 );
   specs.go_for_the_throat    = find_specialization_spell( "Go for the Throat" );
   specs.careful_aim          = find_specialization_spell( "Careful Aim" );
@@ -3481,21 +3451,21 @@ void hunter_t::init_action_list()
       case HUNTER_BEAST_MASTERY:
 
         action_list_str += init_use_racial_actions();
-        action_list_str += "/dire_beast,if=enabled";
-        action_list_str += "/fervor,if=enabled&focus<=65";
+        action_list_str += "/dire_beast";
+        action_list_str += "/fervor,if=focus<=65";
         action_list_str += "/bestial_wrath,if=focus>60&!buff.beast_within.up";
         action_list_str += "/multi_shot,if=active_enemies>5|(active_enemies>1&pet.cat.buff.beast_cleave.down)";
 
-        action_list_str += "/stampede,if=enabled&(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
+        action_list_str += "/stampede,if=(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
 
-        action_list_str += "/barrage,if=enabled&active_enemies>5";
+        action_list_str += "/barrage,if=active_enemies>5";
         action_list_str += "/kill_shot";
         action_list_str += "/kill_command";
-        action_list_str += "/focusing_shot,if=enabled&focus<50";
-        action_list_str += "/a_murder_of_crows,if=enabled&!ticking";
-        action_list_str += "/glaive_toss,if=enabled";
-        action_list_str += "/barrage,if=enabled";
-        action_list_str += "/powershot,if=enabled";
+        action_list_str += "/focusing_shot,if=focus<50";
+        action_list_str += "/a_murder_of_crows,if=!ticking";
+        action_list_str += "/glaive_toss";
+        action_list_str += "/barrage";
+        action_list_str += "/powershot";
         action_list_str += "/cobra_shot,if=active_enemies>5";
         action_list_str += "/arcane_shot,if=buff.thrill_of_the_hunt.react|buff.beast_within.up";
         action_list_str += "/focus_fire,five_stacks=1";
@@ -3511,14 +3481,14 @@ void hunter_t::init_action_list()
       case HUNTER_MARKSMANSHIP:
         action_list_str += init_use_racial_actions();
 
-        action_list_str += "/powershot,if=enabled";
-        action_list_str += "/fervor,if=enabled&focus<=50";
+        action_list_str += "/powershot";
+        action_list_str += "/fervor,if=focus<=50";
         action_list_str += "/rapid_fire,if=!buff.rapid_fire.up";
 
-        action_list_str += "/stampede,if=enabled&(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
+        action_list_str += "/stampede,if=(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
 
-        action_list_str += "/a_murder_of_crows,if=enabled&!ticking";
-        action_list_str += "/dire_beast,if=enabled";
+        action_list_str += "/a_murder_of_crows,if=!ticking";
+        action_list_str += "/dire_beast";
 
         action_list_str += "/run_action_list,name=careful_aim,if=target.health.pct>";
         action_list_str += util::to_string( dbc.spell( 34483 ) -> effectN( 2 ).base_value() );
@@ -3527,16 +3497,16 @@ void hunter_t::init_action_list()
           std::string& CA_actions = get_action_priority_list( "careful_aim" ) -> action_list_str;
           CA_actions += "/chimera_shot";
           CA_actions += "/aimed_shot";
-          CA_actions += "/glaive_toss,if=enabled";
-          CA_actions += "/focusing_shot,if=enabled&focus<60";
+          CA_actions += "/glaive_toss";
+          CA_actions += "/focusing_shot,if=focus<60";
           CA_actions += "/steady_shot";
         }
 
         // actions for outside the CA phase
-        action_list_str += "/glaive_toss,if=enabled";
-        action_list_str += "/barrage,if=enabled";
+        action_list_str += "/glaive_toss";
+        action_list_str += "/barrage";
         action_list_str += "/chimera_shot";
-        action_list_str += "/focusing_shot,if=enabled&focus<50";
+        action_list_str += "/focusing_shot,if=focus<50";
         action_list_str += "/kill_shot";
         action_list_str += "/multi_shot,if=active_enemies>=4";
         action_list_str += "/aimed_shot";
@@ -3545,20 +3515,20 @@ void hunter_t::init_action_list()
 
         // SURVIVAL
       case HUNTER_SURVIVAL:
-        action_list_str += "/fervor,if=enabled&focus<=50";
-        action_list_str += "/a_murder_of_crows,if=enabled&!ticking";
+        action_list_str += "/fervor,if=focus<=50";
+        action_list_str += "/a_murder_of_crows,if=!ticking";
         action_list_str += "/explosive_shot,if=buff.lock_and_load.react";
-        action_list_str += "/glaive_toss,if=enabled";
-        action_list_str += "/powershot,if=enabled";
-        action_list_str += "/barrage,if=enabled";
+        action_list_str += "/glaive_toss";
+        action_list_str += "/powershot";
+        action_list_str += "/barrage";
         action_list_str += "/explosive_shot,if=cooldown_react";
         action_list_str += "/black_arrow,if=!ticking&target.time_to_die>=8";
         action_list_str += "/multi_shot,if=active_enemies>3";
-        action_list_str += "/focusing_shot,if=enabled&focus<50";
+        action_list_str += "/focusing_shot,if=focus<50";
         action_list_str += "/arcane_shot,if=buff.thrill_of_the_hunt.react";
-        action_list_str += "/dire_beast,if=enabled";
+        action_list_str += "/dire_beast";
 
-        action_list_str += "/stampede,if=enabled&(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
+        action_list_str += "/stampede,if=(trinket.stat.agility.up|target.time_to_die<=20|(trinket.stacking_stat.agility.stack>10&trinket.stat.agility.cooldown_remains<=3))";
 
         action_list_str += "/arcane_shot,if=focus>=67&active_enemies<2";
         action_list_str += "/multi_shot,if=focus>=67&active_enemies>1";
@@ -3608,6 +3578,30 @@ void hunter_t::arise()
 
   if ( specs.trueshot_aura -> is_level( level ) && ! sim -> overrides.attack_power_multiplier )
     sim -> auras.attack_power_multiplier -> trigger();
+}
+
+
+// hunter_t::composite_rating_multiplier =====================================
+
+double hunter_t::composite_rating_multiplier( rating_e rating ) const
+{
+  double m = player_t::composite_rating_multiplier( rating );
+
+  switch ( rating )
+  {
+  case RATING_MULTISTRIKE:
+    return m *= 1.0 + specs.multistrike_attunement -> effectN( 1 ).percent();
+  case RATING_MELEE_CRIT:
+    return m *= 1.0 + specs.crit_attunement -> effectN( 1 ).percent();
+  case RATING_SPELL_CRIT:
+    return m *= 1.0 + specs.crit_attunement -> effectN( 1 ).percent();
+  case RATING_MASTERY:
+    return m *= 1.0 + specs.mastery_attunement -> effectN( 1 ).percent();
+  default:
+    break;
+  }
+
+  return m;
 }
 
 // hunter_t::composite_attack_power_multiplier ==============================

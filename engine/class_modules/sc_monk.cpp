@@ -1276,6 +1276,7 @@ struct chi_explosion_t : public monk_melee_attack_t
     }
     return monk_melee_attack_t::cost();
   }
+
  virtual void consume_resource()
   {
     double savings = base_costs[ RESOURCE_CHI ] - cost();
@@ -1617,7 +1618,7 @@ struct melee_t : public monk_melee_attack_t
 
     if ( player -> dual_wield() )
     {
-      base_hit -= 0.19;
+      base_hit -= 0.265; // Effectively 19% miss chance, as characters now have 7.5% hit/expertise baseline.
       base_multiplier *= 1.0 + player -> spec.way_of_the_monk -> effectN( 1 ).percent();
     }
   }

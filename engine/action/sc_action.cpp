@@ -1186,45 +1186,28 @@ void action_t::multistrike( action_state_t* state, dmg_e type, double dmg_multip
   if ( ! result_is_hit( state -> result ) )
     return;
 
-  result_e r = calculate_multistrike_result( state );
-  if ( result_is_multistrike( r ) )
+  // multistrike can proc twice
+  for (int i = 0; i < 2; i++) 
   {
-    action_state_t* ms_state = get_state( state );
-    ms_state -> target = state -> target;
-    ms_state -> n_targets = 1;
-    ms_state -> chain_target = 0;
-    ms_state -> result = r;
-    if ( type == DMG_DIRECT || type == HEAL_DIRECT )
+    result_e r = calculate_multistrike_result( state );
+    if ( result_is_multistrike( r ) )
     {
-      ms_state -> result_amount = calculate_direct_amount( ms_state );
-      schedule_multistrike_travel( ms_state );
-    }
-    else if ( type == DMG_OVER_TIME || type == HEAL_OVER_TIME )
-    {
-      ms_state -> result_amount = calculate_tick_amount( ms_state, dmg_multiplier );
-      assess_damage( ms_state -> result_type, ms_state );
-      action_state_t::release( ms_state );
-    }
-  }
-
-  r = calculate_multistrike_result( state );
-  if ( result_is_multistrike( r ) )
-  {
-    action_state_t* ms_state = get_state( state );
-    ms_state -> target = state -> target;
-    ms_state -> n_targets = 1;
-    ms_state -> chain_target = 0;
-    ms_state -> result = r;
-    if ( type == DMG_DIRECT || type == HEAL_DIRECT )
-    {
-      ms_state -> result_amount = calculate_direct_amount( ms_state );
-      schedule_multistrike_travel( ms_state );
-    }
-    else if ( type == DMG_OVER_TIME || type == HEAL_OVER_TIME )
-    {
-      ms_state -> result_amount = calculate_tick_amount( ms_state, dmg_multiplier );
-      assess_damage( ms_state -> result_type, ms_state );
-      action_state_t::release( ms_state );
+      action_state_t* ms_state = get_state( state );
+      ms_state -> target = state -> target;
+      ms_state -> n_targets = 1;
+      ms_state -> chain_target = 0;
+      ms_state -> result = r;
+      if ( type == DMG_DIRECT || type == HEAL_DIRECT )
+      {
+        ms_state -> result_amount = calculate_direct_amount( ms_state );
+        schedule_multistrike_travel( ms_state );
+      }
+      else if ( type == DMG_OVER_TIME || type == HEAL_OVER_TIME )
+      {
+        ms_state -> result_amount = calculate_tick_amount( ms_state, dmg_multiplier );
+        assess_damage( ms_state -> result_type, ms_state );
+        action_state_t::release( ms_state );
+      }
     }
   }
 }
@@ -1299,6 +1282,7 @@ void action_t::update_resolve( dmg_e type,
   // check that the target has Resolve, check for damage type, and check that the source player is an enemy
   if ( target -> resolve_manager.is_started() && ( type == DMG_DIRECT || type == DMG_OVER_TIME ) && source -> is_enemy() )
   {
+    assert( source -> actor_spawn_index >= 0 && "Trying to register resolve damage event from a dead player! Something is seriously broken in player_t::arise/demise." );
 
     // bool for auto attack, to make code easier to read
     bool is_auto_attack = ( player -> main_hand_attack && s -> action == player -> main_hand_attack ) || ( player -> off_hand_attack && s -> action == player -> off_hand_attack );
@@ -1312,7 +1296,7 @@ void action_t::update_resolve( dmg_e type,
     double raw_resolve_amount = s -> result_raw;
     
     // If the attack does zero damage, it's irrelevant for the purposes
-    // Skip updating the Resolve tabless if the damage is zero to limit unnecessary events
+    // Skip updating the Resolve tables if the damage is zero to limit unnecessary events
     if ( raw_resolve_amount > 0.0 )
     {
       // modify according to damage type; spell damage gives 2.5x as much Resolve
@@ -1321,10 +1305,10 @@ void action_t::update_resolve( dmg_e type,
       // normalize by player's current health, ignoring any temporary health buffs
       raw_resolve_amount /= ( target -> resources.max[ RESOURCE_HEALTH ] - target -> temporary.resource[ RESOURCE_HEALTH ] );
 
-      // update the player's resolve_actor_list
+      // update the player's resolve diminishing return list first!
       target -> resolve_manager.add_diminishing_return_entry( source, source -> get_raw_dps( s ), sim -> current_time );
 
-      // update the player's resolve damage table if the attack did nonzero damage
+      // update the player's resolve damage table 
       target -> resolve_manager.add_damage_event( source, raw_resolve_amount, sim -> current_time );
     
       // cycle through the resolve damage table and add the appropriate amount of Resolve from each event
@@ -1689,10 +1673,18 @@ void action_t::init()
     snapshot_flags |= STATE_MUL_DA | STATE_TGT_MUL_DA | STATE_MUL_PERSISTENT | STATE_VERSATILITY;
 
   if ( ( spell_power_mod.direct > 0 || spell_power_mod.tick > 0 ) )
+  {
     snapshot_flags |= STATE_SP;
+    if ( player -> role == ROLE_TANK )
+      snapshot_flags |= STATE_RESOLVE;
+  }
 
   if ( ( weapon_power_mod > 0 || attack_power_mod.direct > 0 || attack_power_mod.tick > 0 ) )
+  {
     snapshot_flags |= STATE_AP;
+    if ( player -> role == ROLE_TANK )
+      snapshot_flags |= STATE_RESOLVE;
+  }
 
   if ( dot_duration > timespan_t::zero() && ( hasted_ticks || channeled ) )
     snapshot_flags |= STATE_HASTE;
@@ -2326,6 +2318,9 @@ void action_t::snapshot_internal( action_state_t* state, uint32_t flags, dmg_e r
 
   if ( flags & STATE_TGT_MITG_TA )
     state -> target_mitigation_ta_multiplier = composite_target_mitigation( state -> target, get_school() );
+
+  if ( flags & STATE_RESOLVE )
+    state -> resolve = composite_resolve( state );
 }
 
 void action_t::consolidate_snapshot_flags()
