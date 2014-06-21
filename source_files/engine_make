@@ -52,7 +52,6 @@ SRC += \
     player$(PATHSEP)sc_item.cpp \
     player$(PATHSEP)sc_enchant.cpp \
     player$(PATHSEP)sc_consumable.cpp \
-    interfaces$(PATHSEP)sc_wowhead_characterplanner.cpp \
     interfaces$(PATHSEP)sc_wowhead.cpp \
     interfaces$(PATHSEP)sc_http.cpp \
     interfaces$(PATHSEP)sc_bcp_api.cpp \

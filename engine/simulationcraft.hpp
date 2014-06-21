@@ -6452,7 +6452,8 @@ bool download_item_data( item_t&            item,
                          cache::behavior_e  caching,
                          wowhead_e          source );
 
-std::string domain_str( wowhead_e domain );
+player_t* download_player( sim_t* sim, unsigned list_id, cache::behavior_e caching );
+
 std::string decorated_spell_name( const std::string& name,
                                   unsigned spell_id,
                                   const std::string& spell_name,
@@ -6470,12 +6471,6 @@ std::string decorated_buff_name( const std::string& name,
                                  wowhead_e domain,
                                  const std::string& href_parm = std::string(),
                                  bool affix = true );
-}
-
-namespace wowhead_charplanner {
-
-
-player_t* download_player( sim_t* sim, unsigned list_id, cache::behavior_e caching );
 }
 
 

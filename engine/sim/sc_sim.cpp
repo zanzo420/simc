@@ -372,7 +372,7 @@ bool parse_armory( sim_t*             sim,
       player_t* p;
       if ( name == "wowhead" )
       {
-        p = wowhead_charplanner::download_player( sim, util::to_unsigned( stuff.names.front() ), stuff.cache );
+        p = wowhead::download_player( sim, util::to_unsigned( stuff.names.front() ), stuff.cache );
         sim -> active_player = p;
         if ( ! p )
           return false;

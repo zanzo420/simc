@@ -71,6 +71,7 @@ def VS_no_precompiled_header():
 def VS_use_precompiled_header( filename ):
     if re.search( r"sc_player.cpp", filename ):
         return "<PrecompiledHeader>Create</PrecompiledHeader>"
+    filename = filename.replace( "\\","/")
     with open( filename ) as f:
           content = f.read()
           if re.search( r"#include \"simulationcraft.hpp\"", content ):
