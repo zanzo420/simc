@@ -6,7 +6,7 @@
 #define SIMULATIONCRAFT_H
 
 #define SC_MAJOR_VERSION "548"
-#define SC_MINOR_VERSION "4"
+#define SC_MINOR_VERSION "6"
 #define SC_USE_PTR ( 0 )
 #define SC_BETA ( 0 )
 
@@ -4093,6 +4093,32 @@ private:
 
 // Player ===================================================================
 
+enum action_var_e
+{
+  OPERATION_NONE = -1,
+  OPERATION_SET,
+  OPERATION_PRINT,
+  OPERATION_RESET,
+  OPERATION_ADD,
+  OPERATION_SUB
+};
+
+struct action_variable_t
+{
+  std::string name_;
+  double current_value_, default_;
+
+  action_variable_t( const std::string& name, double def = 0 ) :
+    name_( name ), default_( def )
+  { }
+
+  double value() const
+  { return current_value_; }
+
+  void reset()
+  { current_value_ = default_; }
+};
+
 struct player_t : public actor_t
 {
   static const int default_level = 90;
@@ -4825,6 +4851,8 @@ public:
 
   rng_t& rng() { return sim -> rng(); }
   rng_t& rng() const { return sim -> rng(); }
+
+  std::vector<action_variable_t> variables;
 };
 
 // Target Specific ==========================================================
