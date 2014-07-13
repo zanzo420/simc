@@ -1,3 +1,26 @@
+simulationcraft (5.4.8.7-1ubuntu1trusty~1) trusty; urgency=medium
+
+  * #### General
+   * Simulationcraft picture is now transparent. :) 
+    * Bug fixes with HTML output.
+    * Default bloodlust cast time is now 0.5 seconds into the simulation, instead of 5 seconds.
+    * Spirit of Conquest PVP enchant added.
+    * One harmful spell may be used in the precombat action list, otherwise known as casting a spell before the boss is pulled.
+     ** This spell must have a cast time or travel time.
+     ** See Fire Mage for example.
+  * #### Mage
+    * More APL enhancements
+    * Cone of Cone glyph added
+    * Correct living bomb explosion damage
+  * #### Rogue
+   * Updated Combat profile
+  * #### Druid
+   * Change omen of clarity to be 3.5 PPM
+   * Updated Feral Profile
+    * initial_combo_points option added, set to 5 by default.
+
+ -- Serge Camille <philoptik@gmail.com>  Sun, 13 Jul 2014 12:56:57 +0200
+
 simulationcraft (5.4.8.6-1ubuntu1trusty~1) trusty; urgency=low
 
   * General
