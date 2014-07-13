@@ -6,7 +6,7 @@
 #define SIMULATIONCRAFT_H
 
 #define SC_MAJOR_VERSION "548"
-#define SC_MINOR_VERSION "6"
+#define SC_MINOR_VERSION "7"
 #define SC_USE_PTR ( 0 )
 #define SC_BETA ( 0 )
 
@@ -4300,6 +4300,7 @@ struct player_t : public actor_t
   std::map<std::string, std::string> alist_map;
   std::string action_list_information; // comment displayed in profile
   bool no_action_list_provided;
+  bool first_cast;
 
   bool quiet;
   // Reporting

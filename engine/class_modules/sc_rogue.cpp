@@ -246,6 +246,7 @@ struct rogue_t : public player_t
   // Options
   std::string tricks_of_the_trade_target_str;
   timespan_t virtual_hat_interval;
+  int initial_combo_points;
   uint32_t fof_p1, fof_p2, fof_p3;
 
   rogue_t( sim_t* sim, const std::string& name, race_e r = RACE_NIGHT_ELF ) :
@@ -270,6 +271,7 @@ struct rogue_t : public player_t
     virtual_hat_callback( 0 ),
     tricks_of_the_trade_target_str( "" ),
     virtual_hat_interval( timespan_t::min() ),
+    initial_combo_points( 0 ),
     fof_p1( 0 ), fof_p2( 0 ), fof_p3( 0 )
   {
     // Cooldowns
@@ -3183,8 +3185,8 @@ void rogue_t::init_action_list()
     def -> add_action( this, "Vanish", "if=time>10&(combo_points<3|(talent.anticipation.enabled&anticipation_charges<3)|(buff.shadow_blades.down&(combo_points<4|(talent.anticipation.enabled&anticipation_charges<4))))&((talent.shadow_focus.enabled&buff.adrenaline_rush.down&energy<20)|(talent.subterfuge.enabled&energy>=90)|(!talent.shadow_focus.enabled&!talent.subterfuge.enabled&energy>=60))" );
 
     // Cooldowns (No Tier14)
+    def -> add_action( this, "Killing Spree", "if=energy<50" );
     def -> add_action( this, "Shadow Blades", "if=time>5" );
-    def -> add_action( this, "Killing Spree", "if=energy<45" );
     def -> add_action( this, "Adrenaline Rush", "if=energy<35|buff.shadow_blades.up" );
 
     // Rotation
@@ -3207,7 +3209,7 @@ void rogue_t::init_action_list()
     // Combo point finishers
     action_priority_list_t* finisher = get_action_priority_list( "finisher", "Combo point finishers" );
     finisher -> add_action( this, "Rupture", "if=ticks_remain<2&target.time_to_die>=26&(active_enemies<2|!buff.blade_flurry.up)" );
-	finisher -> add_action( this, "Crimson Tempest", "if=active_enemies>=7&dot.crimson_tempest_dot.ticks_remain<=2" );
+    finisher -> add_action( this, "Crimson Tempest", "if=active_enemies>=7&dot.crimson_tempest_dot.ticks_remain<=2" );
     finisher -> add_action( this, "Eviscerate" );
   }
   else if ( specialization() == ROGUE_SUBTLETY )
@@ -3739,6 +3741,9 @@ void rogue_t::combat_begin()
 
     new ( *sim ) virtual_hat_event_t( this, virtual_hat_callback, virtual_hat_interval );
   }
+
+
+  get_target_data( sim -> target ) -> combo_points.add( clamp( initial_combo_points, 0, 5 ) );
 }
 
 // rogue_t::reset ===========================================================
@@ -3829,6 +3834,7 @@ void rogue_t::create_options()
   {
     opt_timespan( "virtual_hat_interval", ( virtual_hat_interval           ) ),
     opt_string( "tricks_of_the_trade_target", tricks_of_the_trade_target_str ),
+    opt_int( "initial_combo_points", initial_combo_points                    ),
     opt_null()
   };
 
@@ -3850,6 +3856,13 @@ bool rogue_t::create_profile( std::string& profile_str, save_e stype, bool save_
       profile_str += "# A zero value will disable virtual HAT procs and assume a real raid is being simulated.\n";
       profile_str += "virtual_hat_interval=-1\n";  // Force it to generate profiles using programmed default.
     }
+    
+    if ( initial_combo_points != 0 )
+    {
+      profile_str += "initial_combo_points=";
+      profile_str += util::to_string( initial_combo_points );
+      profile_str += "\n";
+    }
   }
 
   return true;
@@ -3862,6 +3875,7 @@ void rogue_t::copy_from( player_t* source )
   player_t::copy_from( source );
   rogue_t* p = debug_cast<rogue_t*>( source );
   virtual_hat_interval = p -> virtual_hat_interval;
+  initial_combo_points = p -> initial_combo_points;
 }
 
 // rogue_t::decode_set ======================================================
