@@ -456,8 +456,8 @@ struct stormlash_callback_t : public action_callback_t
     if ( cd -> down() )
       return;
 
-    // 2013/10/4: Hotfixed to 20% chance, 500% damage increase
-    if ( ! listener -> rng().roll( 0.2 ) )
+    // 2013/11/18: Hotfixed to 50% chance, 200% damage modifier
+    if ( ! listener -> rng().roll( 0.5 ) )
       return;
 
     action_state_t* s = reinterpret_cast< action_state_t* >( call_data );
@@ -508,8 +508,8 @@ struct stormlash_callback_t : public action_callback_t
 
     amount = base_power * base_multiplier * cast_time_multiplier;
     amount *= ( s -> result_type == DMG_DIRECT ) ? a -> stormlash_da_multiplier : a -> stormlash_ta_multiplier;
-    // 2013/10/4: Hotfixed to 20% chance, 500% damage increase
-    amount *= 5.0;
+    // 2013/11/18: Hotfixed to 50% chance, 200% damage modifier
+    amount *= 2.0;
 
     if ( a -> sim -> debug )
     {
@@ -635,7 +635,7 @@ player_t::player_t( sim_t*             s,
   flask( FLASK_NONE ),
   food( FOOD_NONE ),
   // Events
-  executing( 0 ), channeling( 0 ), readying( 0 ), off_gcd( 0 ), in_combat( false ), action_queued( false ),
+  executing( 0 ), channeling( 0 ), readying( 0 ), off_gcd( 0 ), in_combat( false ), action_queued( false ), first_cast( true ),
   last_foreground_action( 0 ),
   cast_delay_reaction( timespan_t::zero() ), cast_delay_occurred( timespan_t::zero() ),
   // Actions
@@ -4003,6 +4003,7 @@ void player_t::reset()
     buff_list[ i ] -> reset();
 
   last_foreground_action = 0;
+  first_cast = true;
 
   executing = 0;
   channeling = 0;

@@ -25,6 +25,7 @@ actions.precombat+=/snapshot_stats
 actions.precombat+=/rune_of_power,if=talent.rune_of_power.enabled
 actions.precombat+=/jade_serpent_potion
 actions.precombat+=/mirror_image
+actions.precombat+=/frostbolt
 
 # Executed every time the actor is available.
 
@@ -33,6 +34,7 @@ actions+=/cancel_buff,name=alter_time,moving=1
 actions+=/cold_snap,if=talent.cold_snap.enabled&health.pct<30
 actions+=/conjure_mana_gem,if=mana_gem_charges<3&target.debuff.invulnerable.react
 actions+=/time_warp,if=target.health.pct<25|time>5
+actions+=/mana_gem,if=mana.pct<10
 actions+=/rune_of_power,if=talent.rune_of_power.enabled&(buff.rune_of_power.remains<cast_time&buff.alter_time.down)
 actions+=/rune_of_power,if=talent.rune_of_power.enabled&(cooldown.icy_veins.remains=0&buff.rune_of_power.remains<20)
 actions+=/mirror_image
@@ -49,51 +51,55 @@ actions+=/alter_time,if=buff.alter_time.down&buff.icy_veins.up&buff.amplified.do
 actions+=/use_item,slot=hands,if=(cooldown.alter_time_activate.remains>45|target.time_to_die<25)&(buff.rune_of_power.remains>20|buff.invokers_energy.remains>20|(!talent.rune_of_power.enabled&!talent.invocation.enabled))
 actions+=/flamestrike,if=active_enemies>=5
 actions+=/fire_blast,if=time_to_die<action.ice_lance.travel_time
-actions+=/frostfire_bolt,if=buff.alter_time.up&buff.brain_freeze.up
+actions+=/frostfire_bolt,if=buff.alter_time.up&buff.brain_freeze.react
 actions+=/frostfire_bolt,if=buff.brain_freeze.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time
 actions+=/nether_tempest,cycle_targets=1,if=talent.nether_tempest.enabled&((!ticking|remains<tick_time)&target.time_to_die>6)
 actions+=/living_bomb,cycle_targets=1,if=talent.living_bomb.enabled&((!ticking|remains<tick_time)&target.time_to_die>tick_time*3)
 actions+=/frost_bomb,if=talent.frost_bomb.enabled&target.time_to_die>cast_time+tick_time
-actions+=/ice_lance,if=buff.alter_time.up&buff.fingers_of_frost.up
+actions+=/ice_lance,if=buff.alter_time.up&buff.fingers_of_frost.react
+actions+=/ice_lance,if=buff.fingers_of_frost.react&buff.fingers_of_frost.remains<gcd
+# This line aims to maximize gain from short duration haste buffs, by conditionally ignoring fingers of frost.
+actions+=/frostbolt,if=!action.frozen_orb.in_flight&spell_haste<0.55&buff.bloodlust.remains<(2.5-buff.fingers_of_frost.stack)*8*execute_time&buff.tempus_repit.remains<(2.5-buff.fingers_of_frost.stack)*8*execute_time
 actions+=/ice_lance,if=buff.fingers_of_frost.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time
+actions+=/rune_of_power,if=talent.rune_of_power.enabled&(buff.amplified.up&trinket.stat.intellect.cooldown_remains=0&buff.rune_of_power.remains<20)
 actions+=/presence_of_mind,if=talent.presence_of_mind.enabled&cooldown.alter_time_activate.remains>0
 actions+=/frostbolt
 actions+=/ice_floes,if=talent.ice_floes.enabled
 actions+=/fire_blast,moving=1
 actions+=/ice_lance,moving=1
 
-head=ebon_ritual_hood,id=105647,upgrade=4,gems=sinister_primal_80int_160mastery_180int,reforge=haste_hit
+head=hood_of_swirling_senses,id=105420,upgrade=4,gems=sinister_primal_160hit_160mastery_180int,reforge=crit_haste
 neck=untainted_guardians_chain,id=105465,upgrade=4,reforge=hit_haste
-shoulders=chronomancer_mantle,id=99401,upgrade=4,gems=80int_160mastery_80int_160mastery_120int,enchant=200int_100crit,reforge=crit_mastery
-back=xingho_breath_of_yulon,id=102246,upgrade=4,gems=80int_160mastery_60int,enchant=lightweave_embroidery_3,reforge=crit_hit
-chest=chronomancer_robes,id=99400,upgrade=4,gems=80int_160mastery_80int_160mastery_80int_160mastery_180int,enchant=80all,reforge=crit_haste
-wrists=bracers_of_broken_causation,id=105461,upgrade=4,enchant=180int,reforge=hit_haste
-hands=chronomancer_gloves,id=99397,upgrade=4,gems=80int_160mastery_80int_160mastery_120int,enchant=170mastery,addon=synapse_springs_mark_ii,reforge=crit_mastery
-waist=belt_of_ominous_trembles,id=105515,upgrade=4,gems=80int_160mastery_160hit_160mastery_320mastery_120int
-legs=chronomancer_leggings,id=99399,upgrade=4,gems=320mastery_320mastery_120int,enchant=285int_165crit,reforge=crit_haste
+shoulders=chronomancer_mantle,id=99401,upgrade=4,gems=160exp_160mastery_160exp_160mastery_120int,enchant=200int_100crit,reforge=crit_mastery
+back=xingho_breath_of_yulon,id=102246,upgrade=4,gems=160exp_160mastery_60int,enchant=lightweave_embroidery_3,reforge=crit_hit
+chest=akoliks_acidsoaked_robes,id=105604,upgrade=4,gems=160exp_160mastery_160exp_160mastery_320mastery_180int,enchant=80all,reforge=crit_haste
+wrists=avools_ancestral_bracers,id=105591,upgrade=4,enchant=180int
+hands=chronomancer_gloves,id=99397,upgrade=4,gems=160exp_160mastery_160exp_160mastery_120int,enchant=170mastery,addon=synapse_springs_mark_ii,reforge=crit_mastery
+waist=belt_of_ominous_trembles,id=105515,upgrade=4,gems=160exp_160mastery_160hit_160mastery_320mastery_120int,reforge=hit_haste
+legs=leggings_of_furious_flame,id=105516,upgrade=4,gems=160hit_160mastery_160hit_160mastery_120int,enchant=285int_165crit
 feet=boneinlaid_sandals,id=105493,upgrade=4,gems=320mastery_60hit,enchant=140mastery
-finger1=extinguished_ember_of_galakras,id=105498,upgrade=4,reforge=hit_mastery
-finger2=signet_of_the_dinomancers,id=105606,upgrade=4,gems=80int_160mastery_60haste,reforge=haste_hit
+finger1=signet_of_the_dinomancers,id=105606,upgrade=4,gems=160exp_160mastery_60haste
+finger2=iyyokuks_hereditary_seal,id=105628,upgrade=4,reforge=hit_haste
 trinket1=purified_bindings_of_immerseus,id=105422,upgrade=4
 trinket2=black_blood_of_yshaarj,id=105648,upgrade=4,reforge=haste_mastery
-main_hand=immaculately_preserved_wand,id=105594,upgrade=4,gems=80int_160mastery_60int,enchant=jade_spirit,reforge=crit_haste
+main_hand=immaculately_preserved_wand,id=105594,upgrade=4,gems=160exp_160mastery_60int,enchant=jade_spirit,reforge=crit_hit
 off_hand=revelations_of_yshaarj,id=105650,upgrade=4,gems=80int_160mastery_60int,enchant=165int
 
 # Gear Summary
 # gear_strength=80
 # gear_agility=80
-# gear_stamina=42105
-# gear_intellect=29466
+# gear_stamina=42575
+# gear_intellect=28818
 # gear_spirit=80
 # gear_spell_power=16509
-# gear_hit_rating=5095
-# gear_crit_rating=5098
-# gear_haste_rating=13055
-# gear_mastery_rating=19994
-# gear_armor=18472
+# gear_expertise_rating=1600
+# gear_hit_rating=3522
+# gear_crit_rating=5218
+# gear_haste_rating=14645
+# gear_mastery_rating=20752
+# gear_armor=18555
 # meta_gem=sinister_primal
 # tier16_2pc_caster=1
-# tier16_4pc_caster=1
 # back=xingho_breath_of_yulon,enchant=lightweave_embroidery_3
 # hands=chronomancer_gloves,heroic=1,addon=synapse_springs_mark_ii
 # main_hand=immaculately_preserved_wand,heroic=1,elite=1,weapon=wand,enchant=jade_spirit
