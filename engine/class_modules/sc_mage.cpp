@@ -118,6 +118,7 @@ public:
     // Major
     const spell_data_t* arcane_power;
     const spell_data_t* combustion;
+    const spell_data_t* cone_of_cold;
     const spell_data_t* frostfire;
     const spell_data_t* ice_lance;
     const spell_data_t* icy_veins;
@@ -129,8 +130,8 @@ public:
 
     // Minor
     const spell_data_t* arcane_brilliance;
-	const spell_data_t* loose_mana; // CHANGED 2014/4/15 - Loose mana is a minor glyph, not major.
-	const spell_data_t* mirror_image; // CHANGED 2014/4/15 - Mirror image is a minor glyph, not major.
+    const spell_data_t* loose_mana;
+    const spell_data_t* mirror_image;
   } glyphs;
 
 
@@ -1823,6 +1824,11 @@ struct cone_of_cold_t : public mage_spell_t
   {
     double am = mage_spell_t::action_multiplier();
 
+    if ( p() -> glyphs.cone_of_cold -> ok() )
+    {
+      am *=  1.0 + p() -> glyphs.cone_of_cold -> effectN( 1 ).percent();
+    }
+
     if ( p() -> buffs.frozen_thoughts -> up() )
     {
       am *= ( 1.0 + p() -> buffs.frozen_thoughts -> data().effectN( 1 ).percent() );
@@ -2900,13 +2906,29 @@ struct inferno_blast_t : public mage_spell_t
 
 struct living_bomb_explosion_t : public mage_spell_t
 {
+  double haste_multiplier;
+
   living_bomb_explosion_t( mage_t* p ) :
-    mage_spell_t( "living_bomb_explosion", p, p -> find_spell( p -> talents.living_bomb -> effectN( 2 ).base_value() ) )
+    mage_spell_t( "living_bomb_explosion", p, p -> find_spell( p -> talents.living_bomb -> effectN( 2 ).base_value() ) ), haste_multiplier(1.0)
   {
     aoe = -1;
     background = true;
 
     base_multiplier *= 4;
+  }
+
+  void scale_damage_by_ticks(int num_ticks)
+  {
+    haste_multiplier = 0.25 * num_ticks;
+  }
+
+  virtual double action_multiplier() const
+  {
+    double am = mage_spell_t::action_multiplier();
+
+    am *= haste_multiplier;
+
+    return am;
   }
 
   virtual resource_e current_resource() const
@@ -2936,21 +2958,17 @@ struct living_bomb_t : public mage_spell_t
     if ( result_is_hit( s -> result ) )
     {
       dot_t* dot = get_dot( s -> target );
-      if ( dot -> ticking && dot -> remains() < dot -> current_action -> base_tick_time )
+      if ( dot -> ticks() == 1 )
       {
+        explosion_spell -> scale_damage_by_ticks( dot -> num_ticks );
         explosion_spell -> execute();
-        mage_t& p = *this -> p();
-        p.active_living_bomb_targets--;
       }
     }
 
     mage_spell_t::impact( s );
 
-
     if ( p() -> specialization() == MAGE_FIRE && result_is_hit( s -> result ) )
-    {
       td( s -> target ) -> debuffs.pyromaniac -> trigger( 1, buff_t::DEFAULT_VALUE(), 1 );
-    }
   }
 
   virtual void tick( dot_t* d )
@@ -2965,7 +2983,7 @@ struct living_bomb_t : public mage_spell_t
   {
     mage_spell_t::last_tick( d );
 
-
+    explosion_spell -> scale_damage_by_ticks( d -> num_ticks );
     explosion_spell -> execute();
     mage_t& p = *this -> p();
     p.active_living_bomb_targets--;
@@ -2973,12 +2991,15 @@ struct living_bomb_t : public mage_spell_t
 
   virtual void execute()
   {
+    mage_t& p = *this -> p();
+    bool pre_ticking = get_dot( target ) -> ticking;
+
     mage_spell_t::execute();
 
     if ( result_is_hit( execute_state -> result ) )
     {
-      mage_t& p = *this -> p();
-      p.active_living_bomb_targets++;
+      if ( ! pre_ticking )
+        p.active_living_bomb_targets++;
       p.last_bomb_target = execute_state -> target;
     }
   }
@@ -2990,9 +3011,7 @@ struct living_bomb_t : public mage_spell_t
     assert( p.active_living_bomb_targets <= 3 && p.active_living_bomb_targets >= 0 );
 
     if ( p.active_living_bomb_targets == 3 )
-    {
       return false;
-    }
 
     return mage_spell_t::ready();
   }
@@ -3513,6 +3532,9 @@ struct time_warp_t : public mage_spell_t
 
   virtual bool ready()
   {
+    if ( sim -> overrides.bloodlust )
+      return false;
+
     if ( player -> buffs.exhaustion -> check() )
       return false;
 
@@ -4063,6 +4085,7 @@ void mage_t::init_spells()
   glyphs.arcane_brilliance   = find_glyph_spell( "Glyph of Arcane Brilliance" );
   glyphs.arcane_power        = find_glyph_spell( "Glyph of Arcane Power" );
   glyphs.combustion          = find_glyph_spell( "Glyph of Combustion" );
+  glyphs.cone_of_cold        = find_glyph_spell( "Glyph of Cone of Cold" );
   glyphs.frostfire           = find_glyph_spell( "Glyph of Frostfire" );
   glyphs.ice_lance           = find_glyph_spell( "Glyph of Ice Lance" );
   glyphs.icy_veins           = find_glyph_spell( "Glyph of Icy Veins" );
@@ -4314,6 +4337,13 @@ void mage_t::apl_precombat()
     precombat -> add_action( "jade_serpent_potion" );
 
   precombat -> add_action( this, "Mirror Image" );
+
+  if ( specialization() == MAGE_ARCANE )
+    precombat -> add_action( this, "Arcane Blast" );
+  else if ( specialization() == MAGE_FIRE )
+    precombat -> add_action( this, "Pyroblast" );
+  else
+    precombat -> add_action( this, "Frostbolt" );
 }
 
 
@@ -4420,10 +4450,11 @@ void mage_t::apl_fire()
                               "if=health.pct<30" );
   default_list -> add_action( this, "Time Warp",
                               "if=buff.alter_time.down" );
+  default_list -> add_action( "mana_gem,if=mana.pct<10" );
   default_list -> add_talent( this, "Rune of Power",
-                              "if=buff.rune_of_power.remains<cast_time" );
+                              "if=buff.rune_of_power.remains=0" );
   default_list -> add_action( this, "Evocation",
-                              "if=buff.invokers_energy.remains=0|mana.pct<5" );
+                              "if=(talent.invocation.enabled&buff.invokers_energy.remains=0)|mana.pct<5" );
   default_list -> add_action( "cancel_buff,name=alter_time,if=buff.amplified.up&buff.alter_time.up&(trinket.stat.intellect.cooldown_remains-buff.alter_time.remains>109)",
                               "Cancelaura AT if PBoI procs" );
 
@@ -4439,7 +4470,7 @@ void mage_t::apl_fire()
                               "if=buff.alter_time.down&buff.rune_of_power.remains<4*action.fireball.execute_time&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)",
                               "Cast RoP/Evoc/MI only when player does not have both HU, Pyro proc and fireball mid flight - this causes Proc munching" );
   default_list -> add_action( this, "Evocation",
-                              "if=buff.alter_time.down&buff.invokers_energy.remains<4*action.fireball.execute_time&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)" );
+                              "if=talent.invocation.enabled&buff.alter_time.down&buff.invokers_energy.remains<4*action.fireball.execute_time&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)" );
   default_list -> add_action( this, "Mirror Image",
                               "if=buff.alter_time.down&(buff.heating_up.down|buff.pyroblast.down|!action.fireball.in_flight)" );
 
@@ -4465,6 +4496,7 @@ void mage_t::apl_fire()
 
   combust_sequence -> add_action( "start_pyro_chain,if=!pyro_chain",
                                   "Pyro-chain combustion sequence" );
+  combust_sequence -> add_action( "stop_pyro_chain,if=cooldown.combustion.remains>0&pyro_chain" );
   combust_sequence -> add_talent( this, "Presence of Mind",
                                   "if=buff.alter_time.down" );
   combust_sequence -> add_action( this, "Pyroblast",
@@ -4473,18 +4505,22 @@ void mage_t::apl_fire()
   combust_sequence -> add_action( this, "Alter Time",
                                   "if=buff.alter_time.up&action.pyroblast.execute_time>gcd" );
   combust_sequence -> add_action( this, "Pyroblast",
-                                  "if=buff.pyroblast.up",
+                                  "if=talent.presence_of_mind.enabled&buff.presence_of_mind.up&buff.pyroblast.up",
                                   "Unload all HS Pyros first" );
+  combust_sequence -> add_action( this, "Pyroblast",
+                                  "if=!talent.presence_of_mind.enabled&buff.pyroblast.up" );
   combust_sequence -> add_action( this, "Combustion",
                                   "if=buff.alter_time.down&cooldown.alter_time_activate.remains>150&buff.tempus_repit.up&buff.tempus_repit.remains<gcd",
                                   "Early combustion if meta gem is about to fade and only POM left" );
   combust_sequence -> add_action( this, "Pyroblast",
-                                  "if=buff.presence_of_mind.up&buff.pyroblast.down&(travel_time<=dot.ignite.remains-2*(dot.ignite.ticks_remain-1)|((crit_damage*crit_pct_current+hit_damage*(100-crit_pct_current))*0.01*mastery_value>=dot.ignite.tick_dmg))",
-                                  "The next two line uses POM pyro if it is expected to grow the ignite. To do this, it retrieves tick timing for ignite, calculates estimated damage from POM pyro and the potential instant pyro, and compares the ignite from those pyros against the ignite tick size." );
+                                  "if=buff.presence_of_mind.up&(travel_time+0.15<dot.ignite.remains-4|(crit_damage*crit_pct_current+hit_damage*(100-crit_pct_current))*0.01*mastery_value>dot.ignite.tick_dmg)",
+                                  "These next two line uses POM pyro if it is expected to grow the ignite. To do this, it retrieves tick timing for ignite, calculates estimated damage from POM pyro and the potential instant pyro, and compares the ignite from those pyros against the ignite tick size." );
   combust_sequence -> add_action( this, "Pyroblast",
-                                  "if=buff.presence_of_mind.up&buff.pyroblast.down&(gcd+travel_time<=dot.ignite.remains-2)&(crit_damage*crit_pct_current+hit_damage*(100-crit_pct_current))*0.01*(0.0125*crit_pct_current+1)*mastery_value>=dot.ignite.tick_dmg" );
+                                  "if=buff.presence_of_mind.up&buff.heating_up.up&gcd+travel_time+0.15<dot.ignite.remains-2&(crit_damage*crit_pct_current+hit_damage*(100-crit_pct_current))*0.01*(0.0125*crit_pct_current+1)*mastery_value>dot.ignite.tick_dmg" );
+  combust_sequence -> add_action( this, "Pyroblast",
+                                  "if=buff.presence_of_mind.down&buff.pyroblast.up&(travel_time+0.15<dot.ignite.remains-4|(crit_damage*crit_pct_current+hit_damage*(100-crit_pct_current))*0.01*mastery_value>dot.ignite.tick_dmg)",
+                                  "This line handles pyroblasts generated when POM pyro crits and geneartes a new pyro proc." );
   combust_sequence -> add_action( this, "Combustion" );
-  combust_sequence -> add_action( "stop_pyro_chain,if=pyro_chain" );
 
 
   init_alter_combust -> add_action( "run_action_list,name=proc_builder,if=buff.pyroblast.down|buff.heating_up.down|!action.fireball.in_flight",
@@ -4536,8 +4572,10 @@ void mage_t::apl_fire()
                                "if=buff.pyroblast.up&buff.pyroblast.remains<action.fireball.execute_time",
                                "Use HS procs before they run out" );
   single_target -> add_action( this, "Pyroblast",
-                               "if=set_bonus.tier16_2pc_caster&buff.pyroblast.up&buff.potent_flames.stack>=4&buff.potent_flames.remains<action.fireball.execute_time",
+                               "if=set_bonus.tier16_2pc_caster&buff.pyroblast.up&buff.potent_flames.up&buff.potent_flames.remains<action.fireball.execute_time",
                                "Intentionally sustain 2T16 4 stack or more" );
+  single_target -> add_action( this, "Inferno Blast",
+                               "if=set_bonus.tier16_2pc_caster&buff.pyroblast.down&buff.potent_flames.up&buff.potent_flames.remains<action.fireball.execute_time&buff.potent_flames.remains>gcd&(buff.heating_up.up|action.fireball.in_flight|action.pyroblast.in_flight)" );
   single_target -> add_action( this, "Pyroblast",
                                "if=buff.pyroblast.up&buff.heating_up.up&action.fireball.in_flight",
                                "Pyro camp during regular sequence; Do not use Pyro procs without HU and first using fireball" );
@@ -4556,6 +4594,9 @@ void mage_t::apl_fire()
                                "if=(cooldown.alter_time_activate.remains>0|cooldown.combustion.remains>0)&trinket.stacking_proc.intellect.up&trinket.stacking_proc.intellect.remains<3*gcd&execute_time=gcd" );
   single_target -> add_action( this, "Inferno Blast",
                                "if=buff.pyroblast.up&buff.heating_up.down&!action.fireball.in_flight" );
+  single_target -> add_action( this, "Pyroblast",
+                               "if=buff.presence_of_mind.up",
+                               "Use pyroblast with leftover POMs from pyro-chaining" );
   single_target -> add_action( this, "Fireball" );
   single_target -> add_action( this, "Scorch", "moving=1" );
 }
@@ -4579,9 +4620,10 @@ void mage_t::apl_frost()
   default_list -> add_action( this, "Time Warp", "if=target.health.pct<25|time>5" );
   //not useful if bloodlust is check in option.
 
+  default_list -> add_action( "mana_gem,if=mana.pct<10" );
   default_list -> add_talent( this, "Rune of Power", "if=buff.rune_of_power.remains<cast_time&buff.alter_time.down" );
   default_list -> add_talent( this, "Rune of Power", "if=cooldown.icy_veins.remains=0&buff.rune_of_power.remains<20" );
-  default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&(buff.invokers_energy.down|mana.pct<20)&buff.alter_time.down" );
+  default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&(buff.invokers_energy.down|mana.pct<10)&buff.alter_time.down" );
   default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&cooldown.icy_veins.remains=0&buff.invokers_energy.remains<20" );
   default_list -> add_action( this, "Evocation", "if=!talent.invocation.enabled&mana.pct<50,interrupt_if=mana.pct>95" );
   default_list -> add_action( this, "Mirror Image" );
@@ -4605,13 +4647,19 @@ void mage_t::apl_frost()
 
   default_list -> add_action( this, "Flamestrike", "if=active_enemies>=5" );
   default_list -> add_action( this, "Fire Blast", "if=time_to_die<action.ice_lance.travel_time" );
-  default_list -> add_action( this, "Frostfire Bolt", "if=buff.alter_time.up&buff.brain_freeze.up" );
+  default_list -> add_action( this, "Frostfire Bolt", "if=buff.alter_time.up&buff.brain_freeze.react" );
   default_list -> add_action( this, "Frostfire Bolt", "if=buff.brain_freeze.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time" );
   default_list -> add_talent( this, "Nether Tempest", "cycle_targets=1,if=(!ticking|remains<tick_time)&target.time_to_die>6" );
   default_list -> add_talent( this, "Living Bomb", "cycle_targets=1,if=(!ticking|remains<tick_time)&target.time_to_die>tick_time*3" );
   default_list -> add_talent( this, "Frost Bomb", "if=target.time_to_die>cast_time+tick_time" );
-  default_list -> add_action( this, "Ice Lance", "if=buff.alter_time.up&buff.fingers_of_frost.up" );
+  default_list -> add_action( this, "Ice Lance", "if=buff.alter_time.up&buff.fingers_of_frost.react" );
+  default_list -> add_action( this, "Ice Lance", "if=buff.fingers_of_frost.react&buff.fingers_of_frost.remains<gcd" );
+  default_list -> add_action( this, "Frostbolt",
+                              "if=!action.frozen_orb.in_flight&spell_haste<0.55&buff.bloodlust.remains<(2.5-buff.fingers_of_frost.stack)*8*execute_time&buff.tempus_repit.remains<(2.5-buff.fingers_of_frost.stack)*8*execute_time",
+                              "This line aims to maximize gain from short duration haste buffs, by conditionally ignoring fingers of frost." );
   default_list -> add_action( this, "Ice Lance", "if=buff.fingers_of_frost.react&cooldown.icy_veins.remains>2*action.frostbolt.execute_time" );
+  default_list -> add_talent( this, "Rune of Power", "if=buff.amplified.up&trinket.stat.intellect.cooldown_remains=0&buff.rune_of_power.remains<20" );
+  default_list -> add_action( this, "Evocation", "if=talent.invocation.enabled&buff.amplified.up&trinket.stat.intellect.cooldown_remains=0&buff.invokers_energy.remains<20" );
   default_list -> add_talent( this, "Presence of Mind", "if=cooldown.alter_time_activate.remains>0");
   default_list -> add_action( this, "Frostbolt" );
   default_list -> add_talent( this, "Ice Floes", "moving=1" );
