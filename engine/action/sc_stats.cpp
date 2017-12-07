@@ -168,6 +168,11 @@ void stats_t::add_result( double act_amount,
       }
     }
   }
+  // Add result to total damage done by player if asking for full states
+  if ( sim.json_full_states )
+  {
+    player -> total_dmg_done += act_amount;
+  }
 }
 
 // stats_t::add_execute =====================================================

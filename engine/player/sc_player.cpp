@@ -743,6 +743,7 @@ player_t::player_t( sim_t*             s,
   rps_gain( 0 ), rps_loss( 0 ),
 
   tmi_window( 6.0 ),
+  total_dmg_done( 0 ),
   collected_data( this ),
   // Damage
   iteration_dmg( 0 ), priority_iteration_dmg( 0 ), iteration_dmg_taken( 0 ),
@@ -11078,35 +11079,7 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const a
   // Cumulative sum of action stats to retrieve the total damage done up to each action
   if ( p -> sim -> json_full_states )
   {
-    std::vector<const stats_t*> tmp_stats_list( p -> stats_list.begin(), p -> stats_list.end() );
-
-    for ( size_t i = 0; i < p -> pet_list.size(); ++i )
-    {
-      const pet_t* pet = p -> pet_list[ i ];
-      // Append pet -> stats_list to stats_list
-      tmp_stats_list.insert( tmp_stats_list.end(), pet -> stats_list.begin(), pet -> stats_list.end() );
-    }
-
-    if ( p -> sim -> report_details != 0 )
-    {
-      partial_dmg = 0;
-      bool is_hps = p -> primary_role() == ROLE_HEAL;
-      range::for_each( tmp_stats_list, [ this, is_hps ]( const stats_t* stats ) {
-        if ( stats -> timeline_amount == nullptr )
-        {
-          return;
-        }
-
-        if ( ( stats -> type != STATS_DMG ) == is_hps )
-        {
-          partial_dmg += statistics::calculate_sum( stats -> timeline_amount -> data() );
-        }
-      } );
-    }
-    else
-    {
-      partial_dmg = statistics::calculate_sum( p -> collected_data.timeline_dmg.data() );
-    }
+    partial_dmg = p -> total_dmg_done;
   }
 
   for ( size_t i = 0; i < p -> buff_list.size(); ++i )
@@ -11143,7 +11116,7 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const a
       for ( size_t i = 0; i < current_target -> buff_list.size(); ++i )
       {
         buff_t* d = current_target -> buff_list[ i ];
-        if ( d -> check() && !d -> quiet && !d -> constant )
+        if ( d -> check() && !d -> quiet && !d -> constant && d -> source == p )
         {
           std::vector<double> debuff_args;
           debuff_args.push_back( d -> check() );
@@ -11174,35 +11147,7 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const t
   // Cumulative sum of action stats to retrieve the total damage done up to each action
   if ( p -> sim -> json_full_states )
   {
-    std::vector<const stats_t*> tmp_stats_list( p -> stats_list.begin(), p -> stats_list.end() );
-
-    for ( size_t i = 0; i < p -> pet_list.size(); ++i )
-    {
-      const pet_t* pet = p -> pet_list[ i ];
-      // Append pet -> stats_list to stats_list
-      tmp_stats_list.insert( tmp_stats_list.end(), pet -> stats_list.begin(), pet -> stats_list.end() );
-    }
-
-    if ( p -> sim -> report_details != 0 )
-    {
-      partial_dmg = 0;
-      bool is_hps = p -> primary_role() == ROLE_HEAL;
-      range::for_each( tmp_stats_list, [ this, is_hps ]( const stats_t* stats ) {
-        if ( stats -> timeline_amount == nullptr )
-        {
-          return;
-        }
-
-        if ( ( stats -> type != STATS_DMG ) == is_hps )
-        {
-          partial_dmg += statistics::calculate_sum( stats -> timeline_amount -> data() );
-        }
-      } );
-    }
-    else
-    {
-      partial_dmg = statistics::calculate_sum( p -> collected_data.timeline_dmg.data() );
-    }
+    partial_dmg = p -> total_dmg_done;
   }
 
   for ( size_t i = 0; i < p -> buff_list.size(); ++i )

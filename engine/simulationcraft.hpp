@@ -4049,6 +4049,7 @@ struct player_t : public actor_t
   double rps_gain, rps_loss;
   std::string tmi_debug_file_str;
   double tmi_window;
+  double total_dmg_done;
 
   auto_dispose< std::vector<buff_t*> > buff_list;
   auto_dispose< std::vector<proc_t*> > proc_list;
