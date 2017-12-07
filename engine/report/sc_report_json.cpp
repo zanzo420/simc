@@ -688,6 +688,11 @@ void to_json( JsonOutput root,
       json[ "wait" ] = entry -> wait_time;
     }
 
+    if ( sim.json_full_states )
+    {
+      json[ "dmg" ] = entry -> partial_dmg;
+    }
+
     if ( entry -> buff_list.size() > 0 )
     {
       auto buffs = json[ "buffs" ];

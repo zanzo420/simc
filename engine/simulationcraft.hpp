@@ -3521,6 +3521,7 @@ struct player_collected_data_t
     const player_t* target;
     const timespan_t time;
     timespan_t wait_time;
+    int partial_dmg;
     std::vector< std::pair< buff_t*, std::vector<double> > > buff_list;
     std::vector< std::pair< cooldown_t*, std::vector<double> > > cooldown_list;
     std::vector< std::pair<player_t*, std::vector< std::pair< buff_t*, std::vector<double> > > > > target_list;

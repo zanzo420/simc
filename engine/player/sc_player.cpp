@@ -11075,6 +11075,40 @@ double player_stat_cache_t::player_heal_multiplier( const action_state_t* s ) co
 player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const action_t* a, const player_t* t, const timespan_t& ts, const player_t* p ) :
   action( a ), target( t ), time( ts ), wait_time( timespan_t::zero() )
 {
+  // Cumulative sum of action stats to retrieve the total damage done up to each action
+  if ( p -> sim -> json_full_states )
+  {
+    std::vector<const stats_t*> tmp_stats_list( p -> stats_list.begin(), p -> stats_list.end() );
+
+    for ( size_t i = 0; i < p -> pet_list.size(); ++i )
+    {
+      const pet_t* pet = p -> pet_list[ i ];
+      // Append pet -> stats_list to stats_list
+      tmp_stats_list.insert( tmp_stats_list.end(), pet -> stats_list.begin(), pet -> stats_list.end() );
+    }
+
+    if ( p -> sim -> report_details != 0 )
+    {
+      partial_dmg = 0;
+      bool is_hps = p -> primary_role() == ROLE_HEAL;
+      range::for_each( tmp_stats_list, [ this, is_hps ]( const stats_t* stats ) {
+        if ( stats -> timeline_amount == nullptr )
+        {
+          return;
+        }
+
+        if ( ( stats -> type != STATS_DMG ) == is_hps )
+        {
+          partial_dmg += statistics::calculate_sum( stats -> timeline_amount -> data() );
+        }
+      } );
+    }
+    else
+    {
+      partial_dmg = statistics::calculate_sum( p -> collected_data.timeline_dmg.data() );
+    }
+  }
+
   for ( size_t i = 0; i < p -> buff_list.size(); ++i )
   {
     buff_t* b = p -> buff_list[ i ];
@@ -11090,7 +11124,8 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const a
   }
 
   // Adding cooldown and debuffs snapshots if asking for json full states
-  if ( p -> sim -> json_full_states ) {
+  if ( p -> sim -> json_full_states ) 
+  {
     for ( size_t i = 0; i < p -> cooldown_list.size(); ++i )
     {
       cooldown_t* c = p -> cooldown_list[ i ];
@@ -11136,6 +11171,40 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const a
 player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const timespan_t& ts, const timespan_t& wait, const player_t* p ) :
   action( 0 ), target( 0 ), time( ts ), wait_time( wait )
 {
+  // Cumulative sum of action stats to retrieve the total damage done up to each action
+  if ( p -> sim -> json_full_states )
+  {
+    std::vector<const stats_t*> tmp_stats_list( p -> stats_list.begin(), p -> stats_list.end() );
+
+    for ( size_t i = 0; i < p -> pet_list.size(); ++i )
+    {
+      const pet_t* pet = p -> pet_list[ i ];
+      // Append pet -> stats_list to stats_list
+      tmp_stats_list.insert( tmp_stats_list.end(), pet -> stats_list.begin(), pet -> stats_list.end() );
+    }
+
+    if ( p -> sim -> report_details != 0 )
+    {
+      partial_dmg = 0;
+      bool is_hps = p -> primary_role() == ROLE_HEAL;
+      range::for_each( tmp_stats_list, [ this, is_hps ]( const stats_t* stats ) {
+        if ( stats -> timeline_amount == nullptr )
+        {
+          return;
+        }
+
+        if ( ( stats -> type != STATS_DMG ) == is_hps )
+        {
+          partial_dmg += statistics::calculate_sum( stats -> timeline_amount -> data() );
+        }
+      } );
+    }
+    else
+    {
+      partial_dmg = statistics::calculate_sum( p -> collected_data.timeline_dmg.data() );
+    }
+  }
+
   for ( size_t i = 0; i < p -> buff_list.size(); ++i )
   {
     buff_t* b = p -> buff_list[ i ];
@@ -11151,7 +11220,8 @@ player_collected_data_t::action_sequence_data_t::action_sequence_data_t( const t
   }
 
   // Adding cooldown and debuffs snapshots if asking for json full states
-  if ( p -> sim -> json_full_states ) {
+  if ( p -> sim -> json_full_states ) 
+  {
     for ( size_t i = 0; i < p -> cooldown_list.size(); ++i )
     {
       cooldown_t* c = p -> cooldown_list[ i ];
